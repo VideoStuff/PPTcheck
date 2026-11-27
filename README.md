@@ -76,7 +76,8 @@ run the steps in `.github/workflows/build.yml`.
   requires a GitHub login.
 - **Publishing a release:** create a version tag, e.g. `v1.2.0`. On GitHub, go to
   **Releases → Draft a new release**, type the tag `v1.2.0`, and publish. Or, with git, run
-  `git tag v1.2.0 && git push origin v1.2.0`. The workflow then builds the apps and attaches
+  `git tag v1.2.0 && git push origin v1.2.0`. Or go to **Actions → Build desktop apps → Run
+  workflow** and type the version in *Publish a release*. The workflow then builds the apps and attaches
   the zips to the release. People can download them from the Releases page without a GitHub
   account, as long as the repository is public.
 
