@@ -248,7 +248,9 @@
     html += `<div class="stats">
       ${stat("File size", r.file_size_mb != null ? r.file_size_mb + " MB" : null)}
       ${stat("Slides", r.slide_count)}${stat("Hidden slides", r.hidden_slide_count)}
-      ${stat("Slide size", r.slide_size ? `${r.slide_size.text.split(" (")[0]} · ${r.slide_size.aspect_ratio}` : null)}
+      ${stat("Slide size", r.slide_size ? `${r.slide_size.text.split(" (")[0]}` : null)}
+      ${stat("Slide resolution", r.slide_size ? `${r.slide_size.width_px} × ${r.slide_size.height_px} px` : null)}
+      ${stat("Slide aspect ratio", r.slide_size ? r.slide_size.aspect_ratio + (r.slide_size.name && r.slide_size.name !== "Custom" ? ` (${r.slide_size.name})` : "") : null)}
       ${stat("Videos", s.video_count)}${stat("Total video size", s.total_video_size_mb != null ? s.total_video_size_mb + " MB" : null)}
       ${stat("Total video length", s.total_video_duration)}
       ${stat("Images", s.image_count)}${stat("Audio clips", s.audio_count)}
@@ -262,16 +264,12 @@
     // Videos
     html += `<div class="section"><h3>Videos (${(r.videos || []).length})</h3>` + table(
       [{ label: "File" }, { label: "Shape name" }, { label: "Source" }, { label: "Slide(s)" }, { label: "Size (MB)", num: 1 },
-       { label: "Duration" }, { label: "FPS", num: 1 }, { label: "Resolution" }, { label: "Aspect" }, { label: "Size on slide" },
+       { label: "Duration" }, { label: "FPS", num: 1 }, { label: "Resolution" }, { label: "Aspect ratio" },
        { label: "Codec" }, { label: "Format / container" }],
       (r.videos || []).map((v) => [
         `<strong>${esc(v.file)}</strong>${v.probe_error ? `<br><span class="tag warn">${esc(v.probe_error)}</span>` : ""}${v.source !== "Embedded" ? `<div class="links">${esc(v.target)}</div>` : ""}`,
         esc(fmt(v.name)), esc(v.source), esc(slideList(v.slides)), esc(fmt(v.size_mb)), esc(fmt(v.duration)),
         esc(fmt(v.fps)), esc(fmt(v.resolution)), esc(fmt(v.aspect_ratio)),
-        (v.placements && v.placements.length
-          ? v.placements.map((p) => `Slide ${esc(p.slide)}: ${esc(p.text)} (${esc(p.width_px)} × ${esc(p.height_px)} px) · ${esc(p.aspect_ratio)}` +
-              (p.stretched ? ` <span class="tag err" title="The frame's shape doesn't match the video's ${esc(v.aspect_ratio)} shape, so the video looks stretched or squashed.">Stretched</span>` : "")).join("<br>")
-          : "—"),
         esc(fmt(v.codec)), esc([v.format, v.container].filter(Boolean).join(" · ") || "—"),
       ])) + "</div>";
 

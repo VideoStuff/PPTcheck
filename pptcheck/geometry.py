@@ -15,7 +15,6 @@ PX_PER_INCH = 96
 NAMED_RATIOS = [(16, 9), (4, 3), (16, 10), (3, 2), (1, 1), (21, 9), (5, 4), (2, 1),
                 (9, 16), (3, 4), (10, 16), (2, 3), (4, 5)]
 RATIO_TOLERANCE = 0.01      # 1% counts as "the same" ratio
-STRETCH_TOLERANCE = 0.02    # frame vs. video shape difference that counts as distorted
 
 SLIDE_SIZE_NAMES = {(13.333, 7.5): "Widescreen", (10.0, 7.5): "Standard",
                     (10.0, 5.625): "On-screen Show", (10.0, 6.25): "On-screen Show"}
@@ -66,33 +65,3 @@ def slide_size(cx: int | None, cy: int | None, size_type: str | None = None) -> 
         "text": f"{fmt_in(w_in)} × {fmt_in(h_in)} in ({w_px} × {h_px} px) · {aspect}",
     }
 
-
-def placement(cx: int | None, cy: int | None, crop: dict | None = None) -> dict | None:
-    """Size of a picture/video frame on the slide, from <a:xfrm><a:ext cx cy>.
-
-    crop holds <a:srcRect> values (l/t/r/b in 1/1000ths of a percent); cropping
-    changes which part of the video is shown, so it is used when comparing the
-    frame's shape with the video's shape.
-    """
-    if not cx or not cy:
-        return None
-    w_in, h_in = emu_to_in(cx), emu_to_in(cy)
-    crop = crop or {}
-    keep_w = 1 - (crop.get("l", 0) + crop.get("r", 0)) / 100_000
-    keep_h = 1 - (crop.get("t", 0) + crop.get("b", 0)) / 100_000
-    return {
-        "width_in": round(w_in, 3), "height_in": round(h_in, 3),
-        "width_px": round(w_in * PX_PER_INCH), "height_px": round(h_in * PX_PER_INCH),
-        "aspect_ratio": aspect_label(w_in, h_in),
-        "text": f"{fmt_in(w_in)} × {fmt_in(h_in)} in",
-        "cropped": bool(crop and any(crop.values())),
-        # Shape of the frame expressed in "uncropped video" terms.
-        "_ratio_for_compare": (w_in / keep_w) / (h_in / keep_h) if keep_w > 0 and keep_h > 0 else None,
-    }
-
-
-def is_stretched(frame: dict | None, video_ratio: float | None) -> bool:
-    """True when a video is shown distorted (frame shape differs from the video's)."""
-    if not frame or not video_ratio or not frame.get("_ratio_for_compare"):
-        return False
-    return abs(frame["_ratio_for_compare"] - video_ratio) / video_ratio > STRETCH_TOLERANCE

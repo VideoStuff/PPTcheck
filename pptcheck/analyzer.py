@@ -29,7 +29,7 @@ from lxml import etree
 
 from .addins import match_addins
 from .fonts import classify as classify_font, installed_font_names, is_installed
-from .geometry import aspect_label, is_stretched, placement as frame_placement, slide_size as describe_slide_size
+from .geometry import aspect_label, slide_size as describe_slide_size
 from .media import format_duration, probe_file, probe_zip_member
 
 NS = {
@@ -238,8 +238,7 @@ def _media_from_slide(pkg: Package, root, rels: dict) -> tuple[list[dict], int]:
                 chosen = chosen or rel
             used_rids.update(r for r, _ in rids)
             if chosen:
-                media_refs.append({"kind": kind, "rel": chosen, "shape_name": shape_name,
-                                   "frame": _frame_of(pic)})
+                media_refs.append({"kind": kind, "rel": chosen, "shape_name": shape_name})
         else:
             if pic.find(f".//{{{NS['a']}}}blip") is not None:
                 images += 1
@@ -255,28 +254,9 @@ def _media_from_slide(pkg: Package, root, rels: dict) -> tuple[list[dict], int]:
             kind = "video"
         if any(m["rel"]["target"] == rel["target"] for m in media_refs):
             continue
-        media_refs.append({"kind": kind, "rel": rel, "shape_name": None, "frame": None})
+        media_refs.append({"kind": kind, "rel": rel, "shape_name": None})
     return media_refs, images
 
-
-def _frame_of(pic) -> dict | None:
-    """Size of a picture/video frame on the slide (inches), including any cropping."""
-    ext = pic.find(f"{{{NS['p']}}}spPr/{{{NS['a']}}}xfrm/{{{NS['a']}}}ext")
-    if ext is None:
-        return None
-    try:
-        cx, cy = int(ext.get("cx", 0)), int(ext.get("cy", 0))
-    except ValueError:
-        return None
-    crop = {}
-    src = pic.find(f"{{{NS['p']}}}blipFill/{{{NS['a']}}}srcRect")
-    if src is not None:
-        for side in ("l", "t", "r", "b"):
-            try:
-                crop[side] = int(src.get(side, 0))
-            except ValueError:
-                pass
-    return frame_placement(cx, cy, crop)
 
 
 def _transition(root) -> dict | None:
@@ -640,10 +620,8 @@ def _analyze_package(pkg: Package, file_name: str, size: int, source_dir: str | 
             key = (ref["kind"], rel["target"], rel["external"])
             grp = media_groups.setdefault(key, {
                 "kind": ref["kind"], "target": rel["target"],
-                "external": rel["external"], "slides": [], "shape_names": [], "frames": [],
+                "external": rel["external"], "slides": [], "shape_names": [],
             })
-            if ref.get("frame"):
-                grp["frames"].append({"slide": number, **ref["frame"]})
             if number not in grp["slides"]:
                 grp["slides"].append(number)
             if ref["shape_name"] and ref["shape_name"] not in grp["shape_names"]:
@@ -842,7 +820,6 @@ def _analyze_package(pkg: Package, file_name: str, size: int, source_dir: str | 
         except ValueError:
             slide_size = None
     summary["slide_size"] = slide_size["text"] if slide_size else None
-    summary["stretched_videos"] = [v["file"] for v in videos if v.get("stretched_on_slides")]
 
     return {
         "file_name": file_name,
@@ -907,25 +884,13 @@ def _probe_group(pkg: Package, grp: dict, source_dir: str | None, warnings: list
     codec_bits = [c for c in (entry["video_codec"], entry["audio_codec"]) if c]
     entry["codec"] = " / ".join(codec_bits) if codec_bits else None
 
-    # Aspect ratio of the video itself, and how it is placed on each slide.
+    # Aspect ratio of the video itself.
     ratio = meta.get("aspect_value")
     entry["aspect_value"] = ratio
     entry["aspect_ratio"] = aspect_label(ratio, 1) if ratio else None
     if entry["width"] and entry["height"]:
         rotated = f" (rotated {meta['rotation']}°)" if meta.get("rotation") else ""
         entry["resolution"] = f"{entry['width']} × {entry['height']} px{rotated}"
-    placements = []
-    for f in grp.get("frames", []):
-        stretched = is_stretched(f, ratio) if grp["kind"] == "video" else False
-        placements.append({k: v for k, v in f.items() if not k.startswith("_")} | {"stretched": stretched})
-    entry["placements"] = placements
-    entry["stretched_on_slides"] = sorted({p["slide"] for p in placements if p["stretched"]})
-    sizes = []
-    for p in placements:
-        label = f"{p['text']} ({p['aspect_ratio']})"
-        if label not in sizes:
-            sizes.append(label)
-    entry["size_on_slide"] = "; ".join(sizes) if sizes else None
     return entry
 
 
