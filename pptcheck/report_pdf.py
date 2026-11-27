@@ -150,6 +150,11 @@ def items_to_check(r: dict) -> list[str]:
             if codec and not codec.startswith(WIDELY_SUPPORTED_VIDEO):
                 items.append(f"Video {label} uses {codec}, which may not play on every computer. "
                              f"Microsoft recommends .mp4 with H.264 video and AAC audio.")
+            for pl in v.get("placements") or []:
+                if pl.get("stretched"):
+                    items.append(f"Video {label} looks stretched or squashed on slide {pl['slide']}: the video is "
+                                 f"{v.get('aspect_ratio')} but its frame is {pl['text']} ({pl['aspect_ratio']}). "
+                                 f"Fix with Picture Format > Size > Reset, or resize while holding Shift.")
             if (v.get("size_mb") or 0) >= LARGE_VIDEO_MB:
                 items.append(f"Large video {label}: {v['size_mb']} MB. Consider "
                              f"File > Compress Media to reduce the file size.")
@@ -183,15 +188,15 @@ def _overview(reports, st):
         rows.append([
             _p(r["file_name"], st["cellb"]),
             str(r.get("slide_count", 0)),
+            (lambda z: f"{z['text'].split(' (')[0]} · {z['aspect_ratio']}" if z else "—")(r.get("slide_size")),
             vids,
             "Yes" if s.get("has_transitions") else "No",
-            "Yes" if s.get("has_animations") else "No",
             ", ".join(s.get("addins") or []) or "—",
             ", ".join(s.get("fonts_to_install") or []) or "—",
             str(len(items_to_check(r))),
         ])
-    widths = [1.7 * inch, 0.5 * inch, 0.85 * inch, 0.75 * inch, 0.75 * inch, 1.0 * inch, 1.3 * inch, 0.45 * inch]
-    return _table(["Presentation", "Slides", "Videos", "Transitions", "Animations", "Add-ins",
+    widths = [1.55 * inch, 0.5 * inch, 1.05 * inch, 0.8 * inch, 0.8 * inch, 1.0 * inch, 1.1 * inch, 0.5 * inch]
+    return _table(["Presentation", "Slides", "Slide size", "Videos", "Transitions", "Add-ins",
                    "Fonts to install", "Items"], rows, widths, st)
 
 
@@ -203,8 +208,11 @@ def _presentation(r, st) -> list:
         return flow
 
     hidden = f" ({r['hidden_slide_count']} hidden)" if r.get("hidden_slide_count") else ""
+    size = r.get("slide_size") or {}
     facts = [
         f"{_plural(r.get('slide_count', 0), 'slide')}{hidden}",
+        f"slide size {size['text']}" + (f" ({size['name']})" if size.get("name") and size["name"] != "Custom" else "")
+        if size else "slide size unknown",
         f"{r.get('file_size_mb')} MB",
         f"{_plural(s.get('video_count', 0), 'video')}"
         + (f" ({s.get('total_video_size_mb')} MB, {s.get('total_video_duration')})" if s.get("video_count") else ""),
@@ -232,13 +240,31 @@ def _presentation(r, st) -> list:
     videos = r.get("videos") or []
     flow.append(Paragraph(f"Videos ({len(videos)})", st["h2"]))
     if videos:
-        rows = [[_p(v.get("name") or v.get("file"), st["cellb"]), _slides(v.get("slides")).replace("slides ", "").replace("slide ", ""),
-                 v.get("size_mb") if v.get("size_mb") is not None else "—", v.get("duration") or "—",
-                 v.get("fps") or "—", v.get("resolution") or "—", v.get("codec") or "—", v.get("source")]
-                for v in videos]
-        flow.append(_table(["Video", "Slides", "MB", "Length", "FPS", "Resolution", "Codec", "Source"], rows,
-                           [1.5 * inch, 0.5 * inch, 0.45 * inch, 0.65 * inch, 0.45 * inch, 0.8 * inch,
-                            1.4 * inch, 1.55 * inch], st))
+        rows = []
+        for v in videos:
+            name = escape(str(v.get("name") or v.get("file")))
+            if v.get("source") and v.get("source") != "Embedded":
+                name += f'<br/><font color="#667085">{escape(v["source"])}</font>'
+            on_slide = []
+            for pl in v.get("placements") or []:
+                line = f"Slide {pl['slide']}: {escape(pl['text'])} · {escape(str(pl['aspect_ratio']))}"
+                if pl.get("stretched"):
+                    line += ' <font color="#b42318">(stretched)</font>'
+                on_slide.append(line)
+            rows.append([
+                Paragraph(name, st["cellb"]),
+                _slides(v.get("slides")).replace("slides ", "").replace("slide ", ""),
+                v.get("size_mb") if v.get("size_mb") is not None else "—",
+                v.get("duration") or "—",
+                v.get("fps") or "—",
+                v.get("resolution") or "—",
+                v.get("aspect_ratio") or "—",
+                Paragraph("<br/>".join(on_slide) or "—", st["cell"]),
+                v.get("codec") or "—",
+            ])
+        flow.append(_table(["Video", "Slides", "MB", "Length", "FPS", "Resolution", "Aspect", "Size on slide", "Codec"],
+                           rows, [1.1 * inch, 0.5 * inch, 0.4 * inch, 0.6 * inch, 0.4 * inch, 0.85 * inch,
+                                  0.55 * inch, 1.45 * inch, 1.45 * inch], st))
     else:
         flow.append(_p("No videos.", st["body"]))
 

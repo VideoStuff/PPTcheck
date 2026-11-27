@@ -89,7 +89,21 @@ def _friendly_codec(name: str | None, profile: str | None = None) -> str | None:
 def _empty() -> dict[str, Any]:
     return {"duration_seconds": None, "duration": None, "fps": None, "resolution": None,
             "width": None, "height": None, "video_codec": None, "audio_codec": None,
-            "container": None, "bitrate_kbps": None, "probe_error": None}
+            "container": None, "bitrate_kbps": None, "probe_error": None,
+            "aspect_value": None, "rotation": None}
+
+
+def _finish_aspect(result: dict, dar: float | None, rotation: float | None) -> None:
+    """Display aspect ratio (handles non-square pixels and rotated phone videos)."""
+    w, h = result.get("width"), result.get("height")
+    value = dar if dar and dar > 0 else (w / h if w and h else None)
+    rot = int(round(rotation or 0)) % 360
+    if value and rot in (90, 270):
+        value = 1 / value
+        result["rotation"] = rot
+        if result.get("resolution"):
+            result["resolution"] += f" (rotated {rot}°)"
+    result["aspect_value"] = round(value, 4) if value else None
 
 
 def _probe_mediainfo(path: str) -> dict[str, Any]:
@@ -131,6 +145,7 @@ def _probe_mediainfo(path: str) -> dict[str, Any]:
             result["width"], result["height"] = int(w), int(h)
             result["resolution"] = f"{int(w)}x{int(h)}"
         result["video_codec"] = _friendly_codec(video.format, video.format_profile)
+        _finish_aspect(result, num(video.display_aspect_ratio), num(getattr(video, "rotation", None)))
     if audio is not None:
         result["audio_codec"] = audio.format
     return result
@@ -192,6 +207,22 @@ def _probe_ffprobe(path: str) -> dict[str, Any]:
             result["width"], result["height"] = w, h
             result["resolution"] = f"{w}x{h}"
         result["video_codec"] = _friendly_codec(video.get("codec_name"), video.get("profile"))
+        dar = None
+        if ":" in str(video.get("display_aspect_ratio") or ""):
+            a, b = str(video["display_aspect_ratio"]).split(":", 1)
+            try:
+                dar = float(a) / float(b) if float(b) else None
+            except ValueError:
+                dar = None
+        rotation = (video.get("tags") or {}).get("rotate")
+        for side in video.get("side_data_list") or []:
+            if "rotation" in side:
+                rotation = side["rotation"]
+        try:
+            rotation = float(rotation) if rotation is not None else None
+        except ValueError:
+            rotation = None
+        _finish_aspect(result, dar, rotation)
     if audio:
         result["audio_codec"] = audio.get("codec_name")
     return result

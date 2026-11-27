@@ -3,9 +3,13 @@
 PPTcheck runs on your own computer. It opens `.pptx` files (one at a time or whole
 folders) and reports:
 
-- **Overview:** file size, slide count, hidden slides, text density, images, audio, speaker notes
+- **Overview:** file size, slide count, hidden slides, **slide size** (in inches, PowerPoint's
+  units, plus pixels at 96 px/inch and the aspect ratio, e.g. `13.33 × 7.5 in (1280 × 720 px) · 16:9`),
+  text density, images, audio, speaker notes
 - **Videos:** each video's file name, which slides it's on, size (MB), duration (HH:MM:SS),
-  frame rate (FPS), resolution, codec and format. Covers both embedded and linked videos.
+  frame rate (FPS), resolution in pixels, aspect ratio, **size on the slide in inches**, codec
+  and format. Covers both embedded and linked videos. Videos whose frame on the slide doesn't
+  match the video's shape are flagged as **stretched**. Cropping is taken into account.
 - **Transitions & animations:** which slides have transitions, the type (Morph, Fade, Push…),
   auto-advance timings, and animation counts per slide
 - **Add-ins:** Slido, Mentimeter, Poll Everywhere, Kahoot!, Microsoft Forms and other
@@ -161,6 +165,8 @@ python -m pptcheck --scan "C:\path\to\folder" --out report.json  # raw data as J
 |---|---|
 | Slide order / hidden slides | `ppt/presentation.xml` and `show="0"` on each `<p:sld>` |
 | Videos & audio | `<a:videoFile>`, `<a:audioFile>`, `<p14:media>` in slide XML → slide `.rels` → `ppt/media/*` |
+| Slide size | `<p:sldSz cx cy>` in `ppt/presentation.xml` (EMU: 914,400 per inch) |
+| Video size on slide | the video frame's `<a:xfrm><a:ext>` (and `<a:srcRect>` cropping), compared with the video's display aspect ratio |
 | Video metrics | MediaInfo (or ffprobe, if MediaInfo is unavailable) on each extracted media file: duration, frame rate, width×height, codecs |
 | Transitions | `<p:transition>`, including Morph (`p159:morph`) and newer effects in `mc:AlternateContent`; `advTm` = auto-advance |
 | Animations | `<p:timing>` → `<p:cTn presetClass=…>` (entrance/emphasis/exit/motion path). Video "play" triggers are counted separately. |

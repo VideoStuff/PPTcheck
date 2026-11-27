@@ -32,7 +32,7 @@ def test_video(report):
     if ffprobe_available():
         assert v["duration"] == "00:00:05"
         assert v["fps"] == 30.0
-        assert v["resolution"] == "1280x720"
+        assert v["resolution"] == "1280 × 720 px"
         assert v["video_codec"].startswith("H.264")
 
 
@@ -116,3 +116,30 @@ def test_pdf_report(report, tmp_path):
     broken = {"file_name": "broken.pptx", "error": "Not a valid .pptx", "slide_count": 0}
     multi = build_pdf([report, broken], str(tmp_path / "many.pdf"))
     assert open(multi, "rb").read(5) == b"%PDF-"
+
+
+def test_slide_size_and_video_shape(report):
+    size = report["slide_size"]
+    assert (size["width_in"], size["height_in"]) == (10.0, 7.5)
+    assert (size["width_px"], size["height_px"]) == (960, 720) and size["aspect_ratio"] == "4:3"
+    v = report["videos"][0]
+    assert v["resolution"] == "1280 × 720 px" and v["aspect_ratio"] == "16:9"
+    p = v["placements"][0]
+    # The sample places the 16:9 video in a 4 x 3 inch frame, so it is squashed.
+    assert (p["slide"], p["width_in"], p["height_in"], p["aspect_ratio"]) == (2, 4.0, 3.0, "4:3")
+    assert p["stretched"] and v["stretched_on_slides"] == [2]
+    from pptcheck.report_pdf import items_to_check
+    assert any("stretched" in i for i in items_to_check(report))
+
+
+def test_geometry_helpers():
+    from pptcheck.geometry import aspect_label, is_stretched, placement, slide_size
+    assert aspect_label(1920, 1080) == "16:9" and aspect_label(1024, 768) == "4:3"
+    assert aspect_label(1080, 1920) == "9:16" and aspect_label(2.39, 1) == "2.39:1"
+    wide = slide_size(12192000, 6858000)          # PowerPoint's default widescreen slide
+    assert wide["text"] == "13.33 × 7.5 in (1280 × 720 px) · 16:9" and wide["name"] == "Widescreen"
+    frame = placement(6096000, 3429000)            # 6.67 x 3.75 in, 16:9
+    assert not is_stretched(frame, 16 / 9) and is_stretched(frame, 4 / 3)
+    # Cropping the sides of a 16:9 video to a 4:3 frame is not distortion.
+    cropped = placement(4572000, 3429000, {"l": 12500, "r": 12500})
+    assert cropped["aspect_ratio"] == "4:3" and not is_stretched(cropped, 16 / 9)

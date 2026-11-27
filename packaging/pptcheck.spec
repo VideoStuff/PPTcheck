@@ -61,7 +61,7 @@ if IS_MAC:
         info_plist={
             "CFBundleName": "PPTcheck",
             "CFBundleDisplayName": "PPTcheck",
-            "CFBundleShortVersionString": os.environ.get("PPTCHECK_VERSION", "1.4.0").lstrip("v"),
+            "CFBundleShortVersionString": os.environ.get("PPTCHECK_VERSION", "1.5.0").lstrip("v"),
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,   # follow light/dark mode
         },

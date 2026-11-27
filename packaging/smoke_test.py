@@ -38,7 +38,9 @@ video = report["videos"][0]
 check("slide count", report["slide_count"] == 4)
 check("video duration", video["duration"] == "00:00:05")
 check("video fps", video["fps"] == 30.0)
-check("video resolution", video["resolution"] == "1280x720")
+check("video resolution", video["resolution"] == "1280 × 720 px")
+check("slide size in inches", (report["slide_size"] or {}).get("text") == "10 × 7.5 in (960 × 720 px) · 4:3")
+check("video size on slide + stretch check", video["size_on_slide"] == "4 × 3 in (4:3)" and video["stretched_on_slides"] == [2])
 # "MPEG-4" is how MediaInfo names the container (ffprobe would say "QuickTime / MOV"),
 # which proves the bundled MediaInfo library is the one in use.
 check("bundled MediaInfo engine used", video["container"] == "MPEG-4")

@@ -153,6 +153,7 @@
       case "has_transitions": return s.has_transitions ? 1 : 0;
       case "has_animations": return s.has_animations ? 1 : 0;
       case "addins_text": return (s.addins || []).join(", ");
+      case "slide_size": return r.slide_size ? r.slide_size.width_in * 1000 + r.slide_size.height_in : 0;
       case "fonts_issue": return (s.fonts_to_install || []).length * 1000 + (s.font_count || 0);
       default: return r[key] ?? "";
     }
@@ -192,6 +193,7 @@
       return `<tr data-key="${esc(r._key)}">
         <td><div class="fname">${esc(r.file_name)}${status}</div></td>
         <td class="num">${fmt(r.slide_count)}</td>
+        <td>${r.slide_size ? `${esc(r.slide_size.width_in.toFixed(2).replace(/\.?0+$/, ""))} × ${esc(r.slide_size.height_in.toFixed(2).replace(/\.?0+$/, ""))} in<div class="links">${esc(r.slide_size.width_px)} × ${esc(r.slide_size.height_px)} px · ${esc(r.slide_size.aspect_ratio)}</div>` : "—"}</td>
         <td class="num">${fmt(r.hidden_slide_count)}</td>
         <td class="num">${fmt(s.video_count, 0)}</td>
         <td class="num">${fmt(s.total_video_size_mb, "0")}</td>
@@ -246,6 +248,7 @@
     html += `<div class="stats">
       ${stat("File size", r.file_size_mb != null ? r.file_size_mb + " MB" : null)}
       ${stat("Slides", r.slide_count)}${stat("Hidden slides", r.hidden_slide_count)}
+      ${stat("Slide size", r.slide_size ? `${r.slide_size.text.split(" (")[0]} · ${r.slide_size.aspect_ratio}` : null)}
       ${stat("Videos", s.video_count)}${stat("Total video size", s.total_video_size_mb != null ? s.total_video_size_mb + " MB" : null)}
       ${stat("Total video length", s.total_video_duration)}
       ${stat("Images", s.image_count)}${stat("Audio clips", s.audio_count)}
@@ -259,11 +262,17 @@
     // Videos
     html += `<div class="section"><h3>Videos (${(r.videos || []).length})</h3>` + table(
       [{ label: "File" }, { label: "Shape name" }, { label: "Source" }, { label: "Slide(s)" }, { label: "Size (MB)", num: 1 },
-       { label: "Duration" }, { label: "FPS", num: 1 }, { label: "Resolution" }, { label: "Codec" }, { label: "Format / container" }],
+       { label: "Duration" }, { label: "FPS", num: 1 }, { label: "Resolution" }, { label: "Aspect" }, { label: "Size on slide" },
+       { label: "Codec" }, { label: "Format / container" }],
       (r.videos || []).map((v) => [
         `<strong>${esc(v.file)}</strong>${v.probe_error ? `<br><span class="tag warn">${esc(v.probe_error)}</span>` : ""}${v.source !== "Embedded" ? `<div class="links">${esc(v.target)}</div>` : ""}`,
         esc(fmt(v.name)), esc(v.source), esc(slideList(v.slides)), esc(fmt(v.size_mb)), esc(fmt(v.duration)),
-        esc(fmt(v.fps)), esc(fmt(v.resolution)), esc(fmt(v.codec)), esc([v.format, v.container].filter(Boolean).join(" · ") || "—"),
+        esc(fmt(v.fps)), esc(fmt(v.resolution)), esc(fmt(v.aspect_ratio)),
+        (v.placements && v.placements.length
+          ? v.placements.map((p) => `Slide ${esc(p.slide)}: ${esc(p.text)} (${esc(p.width_px)} × ${esc(p.height_px)} px) · ${esc(p.aspect_ratio)}` +
+              (p.stretched ? ` <span class="tag err" title="The frame's shape doesn't match the video's ${esc(v.aspect_ratio)} shape, so the video looks stretched or squashed.">Stretched</span>` : "")).join("<br>")
+          : "—"),
+        esc(fmt(v.codec)), esc([v.format, v.container].filter(Boolean).join(" · ") || "—"),
       ])) + "</div>";
 
     if ((r.audio || []).length) {
