@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PPTcheck</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">PPT<span>check</span></div>
+  <div class="tagline">Technical audit for PowerPoint files — videos, transitions, animations &amp; add-ins</div>
+  <div id="ffprobeStatus" class="pill">Checking FFmpeg…</div>
+</header>
+
+<main>
+  <section class="card input-card">
+    <div id="dropZone" class="dropzone" tabindex="0">
+      <div class="dz-title">Drop .pptx files or folders here</div>
+      <div class="dz-sub">Temporary “~$” lock files are ignored automatically.</div>
+      <div class="dz-actions">
+        <button class="btn primary" id="pickFiles" type="button">Choose files…</button>
+        <button class="btn" id="pickFolder" type="button">Choose folder…</button>
+        <label class="check"><input type="checkbox" id="recursive" checked> Include subfolders</label>
+      </div>
+      <input type="file" id="fileInput" accept=".pptx,.pptm,.ppsx,.ppsm" multiple hidden>
+      <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+    </div>
+    <div class="path-scan">
+      <label for="folderPath">Or scan a folder directly from this computer (faster for big folders, and can find <em>linked</em> videos):</label>
+      <div class="row">
+        <input type="text" id="folderPath" placeholder="e.g. C:\Users\Jon\Documents\Decks   or   /Users/jon/Decks">
+        <button class="btn" id="scanPath" type="button">Scan folder</button>
+      </div>
+    </div>
+    <div id="progress" class="progress hidden" aria-live="polite">
+      <div class="progress-head">
+        <span id="progressText">Preparing…</span>
+        <button class="btn small" id="cancelBtn" type="button">Cancel</button>
+      </div>
+      <div class="bar"><div id="progressBar"></div></div>
+      <div id="progressFile" class="muted small-text"></div>
+    </div>
+  </section>
+
+  <section class="card" id="resultsCard">
+    <div class="results-head">
+      <h2>Batch summary <span id="countLabel" class="muted"></span></h2>
+      <div class="exports">
+        <span class="muted small-text">Export (visible rows):</span>
+        <button class="btn small" data-export="summary">Summary CSV</button>
+        <button class="btn small" data-export="videos">Videos CSV</button>
+        <button class="btn small" data-export="transitions">Transitions CSV</button>
+        <button class="btn small" data-export="addins">Add-ins CSV</button>
+        <button class="btn small" data-export="slides">Slides CSV</button>
+        <button class="btn small" data-export="json">Full JSON</button>
+        <button class="btn small danger" id="clearBtn">Clear</button>
+      </div>
+    </div>
+    <div class="filters">
+      <input type="search" id="filterText" placeholder="Filter by file name or add-in…">
+      <label>Videos <select id="filterVideos"><option value="">Any</option><option value="yes">Has videos</option><option value="no">No videos</option></select></label>
+      <label>Transitions <select id="filterTrans"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+      <label>Add-ins <select id="filterAddins"><option value="">Any</option><option value="yes">Detected</option><option value="no">None</option></select></label>
+    </div>
+    <div class="table-wrap">
+      <table id="summaryTable" class="data">
+        <thead><tr>
+          <th data-sort="file_name">File name</th>
+          <th data-sort="slide_count" class="num">Slides</th>
+          <th data-sort="hidden_slide_count" class="num">Hidden</th>
+          <th data-sort="video_count" class="num">Videos</th>
+          <th data-sort="total_video_size_mb" class="num">Video size (MB)</th>
+          <th data-sort="has_transitions">Transitions?</th>
+          <th data-sort="has_animations">Animations?</th>
+          <th data-sort="addins_text">Detected add-ins</th>
+          <th data-sort="file_size_mb" class="num">File size (MB)</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="emptyState" class="empty">No presentations analysed yet. Drop some files above to begin.</div>
+    </div>
+  </section>
+</main>
+
+<div id="detail" class="detail hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+  <div class="detail-backdrop" data-close></div>
+  <div class="detail-panel">
+    <div class="detail-head">
+      <h2 id="detailTitle"></h2>
+      <div class="row">
+        <button class="btn small" id="detailJson">Export JSON</button>
+        <button class="btn small" id="detailCsv">Export CSV</button>
+        <button class="btn small" data-close>Close ✕</button>
+      </div>
+    </div>
+    <div id="detailBody" class="detail-body"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
