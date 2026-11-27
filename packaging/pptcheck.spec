@@ -13,11 +13,12 @@ from PyInstaller.utils.hooks import collect_submodules
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 IS_MAC = sys.platform == "darwin"
 
-hidden = (
-    collect_submodules("uvicorn")
-    + collect_submodules("fontTools.ttLib.tables")   # font tables are imported on demand
-    + ["multipart", "python_multipart"]
-)
+hidden = collect_submodules("fontTools.ttLib.tables")   # font tables are imported on demand
+# The window: pywebview picks its platform module at run time.
+if sys.platform.startswith("win"):
+    hidden += ["webview.platforms.winforms", "webview.platforms.edgechromium", "clr_loader", "pythonnet"]
+elif IS_MAC:
+    hidden += ["webview.platforms.cocoa"]
 
 # The MediaInfo library ships inside the pymediainfo package (MediaInfo.dll /
 # libmediainfo.0.dylib / libmediainfo.so.0). Add it explicitly so it is always
@@ -34,7 +35,8 @@ a = Analysis(
     binaries=mediainfo_libs,
     datas=[(os.path.join(ROOT, "pptcheck", "static"), os.path.join("pptcheck", "static"))],
     hiddenimports=hidden,
-    excludes=["tkinter", "pptx", "PIL", "numpy", "pytest", "IPython"],
+    excludes=["tkinter", "pptx", "PIL", "numpy", "pytest", "IPython", "PyQt5", "PyQt6", "PySide2", "PySide6",
+              "gi", "cefpython3", "fastapi", "uvicorn"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
@@ -58,9 +60,9 @@ if IS_MAC:
         info_plist={
             "CFBundleName": "PPTcheck",
             "CFBundleDisplayName": "PPTcheck",
-            "CFBundleShortVersionString": os.environ.get("PPTCHECK_VERSION", "1.2.0"),
-            "LSUIElement": True,          # no Dock icon; the UI is in the browser
+            "CFBundleShortVersionString": os.environ.get("PPTCHECK_VERSION", "1.3.0").lstrip("v"),
             "NSHighResolutionCapable": True,
+            "NSRequiresAquaSystemAppearance": False,   # follow light/dark mode
         },
     )
 else:

@@ -6,19 +6,25 @@ transitions, animations, add-ins such as Slido or Mentimeter, and fonts that
 need installing. Everything runs on your own computer: no files are uploaded
 anywhere, and you don't need to install anything else.
 
+(Windows only: PPTcheck uses Microsoft's "WebView2" component, which is already
+part of Windows 11 and almost all Windows 10 computers. If it's missing,
+PPTcheck tells you and opens Microsoft's free download page.)
+
 HOW TO START
 ------------
 Windows:  double-click PPTcheck.exe
 Mac:      double-click PPTcheck.app (move it to your Applications folder first)
 
-Your web browser opens the PPTcheck dashboard. PPTcheck runs quietly in the
-background: there's no separate window. Drop .pptx files or folders onto the
-page to check them.
+PPTcheck opens in its own window. Drag .pptx files or whole folders onto the
+window, or use "Choose files..." / "Choose folder...". Close the window when
+you're done.
 
-HOW TO STOP
------------
-Click "Quit PPTcheck" in the top-right of the dashboard. It also stops by
-itself about 15 minutes after you close the browser tab.
+PRIVACY
+-------
+PPTcheck reads your presentations directly from your disk. Nothing is uploaded,
+and the app doesn't send your files anywhere. The only time it uses the
+internet is if you click a font "Download" or "Search" link, which opens your
+normal web browser.
 
 FIRST-TIME SECURITY WARNINGS
 ----------------------------

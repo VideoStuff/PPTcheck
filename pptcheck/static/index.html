@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- The page may not load or send anything over the network. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
   <title>PPTcheck</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -11,9 +13,9 @@
   <div class="brand">PPT<span>check</span></div>
   <div class="tagline">Technical audit for PowerPoint files — videos, transitions, animations, add-ins &amp; fonts</div>
   <div id="engineStatus" class="pill">Starting…</div>
-  <button class="btn small hidden" id="quitBtn" type="button" title="Stop PPTcheck running in the background">Quit PPTcheck</button>
 </header>
-<div id="offlineBanner" class="offline hidden">PPTcheck has stopped running. Open the PPTcheck app again to keep working (your results on this page will be lost when you refresh).</div>
+<div class="privacy">🔒 Works entirely on this computer. Files are read directly from your disk and are never uploaded or sent anywhere.</div>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
 <main>
   <section class="card input-card">
@@ -24,15 +26,6 @@
         <button class="btn primary" id="pickFiles" type="button">Choose files…</button>
         <button class="btn" id="pickFolder" type="button">Choose folder…</button>
         <label class="check"><input type="checkbox" id="recursive" checked> Include subfolders</label>
-      </div>
-      <input type="file" id="fileInput" accept=".pptx,.pptm,.ppsx,.ppsm" multiple hidden>
-      <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
-    </div>
-    <div class="path-scan">
-      <label for="folderPath">Or scan a folder directly from this computer (faster for big folders, and can find <em>linked</em> videos):</label>
-      <div class="row">
-        <input type="text" id="folderPath" placeholder="e.g. C:\Users\Jon\Documents\Decks   or   /Users/jon/Decks">
-        <button class="btn" id="scanPath" type="button">Scan folder</button>
       </div>
     </div>
     <div id="progress" class="progress hidden" aria-live="polite">

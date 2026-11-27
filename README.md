@@ -17,24 +17,30 @@ folders) and reports:
 It then shows a sortable, filterable dashboard that you can export to **CSV** (opens in Excel)
 or **JSON**.
 
-Nothing gets uploaded to the internet. The "server" runs only on your computer (`127.0.0.1`)
-and accepts no connections from other machines.
+**Privacy:** PPTcheck is a desktop app with its own window. It reads presentations directly
+from your disk and never uploads or sends them anywhere. It has no web server and makes no
+network connections. The page shown in the window is also locked down so it *can't* make
+network requests. The only time the internet is used is when you click a font download/search
+link, which opens your normal web browser.
 
 ---
 
 ## How it works
 
-A `.pptx` file is actually a ZIP archive full of XML files. PPTcheck has a small **Python**
-program (built with FastAPI) that opens that archive directly. It reads the slide XML for
+A `.pptx` file is actually a ZIP archive full of XML files. PPTcheck is a **Python** program
+that opens that archive directly. It reads the slide XML for
 `<p:transition>` and animation timing, follows each slide's relationship file
 (`ppt/slides/_rels/slideN.xml.rels`) to find videos, web add-ins, tags and hyperlinks, and
 scans `ppt/webextensions/`. Each embedded video in `ppt/media/` is copied out to a temporary
 file and measured with **MediaInfo** (built in), which is where the exact duration, FPS and codec
-come from. The dashboard is a plain web page that the Python program serves to your browser.
+come from. The interface is shown in a native window using **pywebview**, which uses the web
+engine built into the operating system (Edge WebView2 on Windows, WebKit on macOS). The window
+passes the file's *location* (not its contents) to the Python code through pywebview's
+in-process bridge.
 
 ```
-Browser dashboard  ──(sends file)──▶  Python server (FastAPI)  ──▶  unzip + read XML (lxml)
-   (static/*.html/js)  ◀──(JSON report)──                        └─▶  MediaInfo on each video
+App window (static/*.html/js)  ──(file location)──▶  Python (pptcheck/desktop.py)  ──▶  read .pptx from disk (lxml)
+                               ◀──(report)─────────                                 └─▶  MediaInfo on each video
 ```
 
 ---
@@ -49,9 +55,12 @@ else it needs are built in, so people don't need to install anything.
    - **Mac with Apple chip (M1 and newer):** `PPTcheck-macOS-AppleSilicon.zip`
    - **Older Intel Mac:** `PPTcheck-macOS-Intel.zip`
 2. Unzip it. On a Mac, drag `PPTcheck.app` into your Applications folder.
-3. Double-click **PPTcheck**. Your browser opens the dashboard.
-4. When you're finished, click **Quit PPTcheck** at the top-right of the dashboard. It also
-   stops by itself about 15 minutes after you close the browser tab.
+3. Double-click **PPTcheck**. It opens in its own window.
+4. When you're finished, close the window.
+
+On Windows, the window uses Microsoft's **WebView2** component, which is part of Windows 11 and
+almost all Windows 10 computers. If it's missing, PPTcheck says so and opens Microsoft's free
+download page.
 
 **First launch security prompts:** the app isn't signed with a paid Apple/Microsoft developer
 certificate, so each computer asks for confirmation once:
@@ -74,10 +83,11 @@ run the steps in `.github/workflows/build.yml`.
   presentation (`packaging/smoke_test.py`). The zips are attached to that run: open the
   repository's **Actions** tab, click the run, then go to **Artifacts**. Downloading these
   requires a GitHub login.
-- **Publishing a release:** create a version tag, e.g. `v1.2.0`. On GitHub, go to
-  **Releases → Draft a new release**, type the tag `v1.2.0`, and publish. Or, with git, run
-  `git tag v1.2.0 && git push origin v1.2.0`. Or go to **Actions → Build desktop apps → Run
-  workflow** and type the version in *Publish a release*. The workflow then builds the apps and attaches
+  On Windows and macOS the check also opens the **real app window**, analyses the test deck
+  through the interface, and saves a screenshot (artifact `selftest-…`).
+- **Publishing a release:** go to **Actions → Build desktop apps → Run workflow** and type the
+  version (e.g. `v1.3.1`) in *Publish a release*. Or push a version tag with git:
+  `git tag v1.3.1 && git push origin v1.3.1`. The workflow then builds the apps and attaches
   the zips to the release. People can download them from the Releases page without a GitHub
   account, as long as the repository is public.
 
@@ -92,7 +102,8 @@ pyinstaller packaging/pptcheck.spec --noconfirm
 
 ### Running from source (for development)
 
-Requires Python 3.10+. FFmpeg is optional: video details come from the MediaInfo library,
+Requires Python 3.10+ on Windows or macOS. (On Linux, pywebview also needs GTK or Qt; see the
+pywebview documentation.) FFmpeg is optional: video details come from the MediaInfo library,
 which installs automatically with `pymediainfo`.
 
 - **Windows:** double-click `run.bat`. **macOS/Linux:** run `./run.sh`.
@@ -108,37 +119,31 @@ pip install -r requirements.txt
 python -m pptcheck
 ```
 
-Options: `python -m pptcheck --port 9000` uses a different port, and `--no-browser` stops it
-from opening the browser automatically.
-
 ---
 
 ## Using the dashboard
 
-1. **Add presentations**, in one of three ways:
-   - Drag `.pptx` files **or whole folders** onto the drop area.
-   - Click **Choose files…** or **Choose folder…**. Untick *Include subfolders* to scan only the
-     top level of a folder.
-   - Paste a folder path, such as `C:\Users\Jon\Documents\Decks`, into the box and click
-     **Scan folder**. This reads the files straight from your disk without copying them, so it
-     is faster for large folders. It is also the **only way linked (not embedded) videos can be
-     measured**, because PPTcheck needs to know where the presentation lives to find them.
-2. A progress bar shows the scan. Files are processed two at a time in the background, so the page
-   stays responsive. **Cancel** stops the scan after the files currently being processed.
+1. **Add presentations:** drag `.pptx` files **or whole folders** onto the window, or click
+   **Choose files…** / **Choose folder…**. Untick *Include subfolders* to scan only the top level
+   of a folder. Files are read straight from disk, so **linked** (not embedded) videos stored
+   next to the presentation are found and measured too.
+2. A progress bar shows the scan. Files are processed two at a time in the background, so the
+   window stays responsive. **Cancel** stops the scan after the files currently being processed.
 3. **Batch summary table:** click any column header to sort, and use the search box and drop-downs to
    filter (for example *Add-ins: Detected*).
 4. **Click a row** to open the detailed view, which shows overview stats, the per-video table,
    transitions, animations, add-ins with their slide numbers, and a slide-by-slide breakdown.
 5. **Export:** the buttons above the table export the rows currently shown (Summary, Videos,
-   Transitions, Add-ins, Fonts and Slides as CSV, or everything as JSON). The detail view has its own
-   **Export JSON / Export CSV** buttons for a single presentation.
+   Transitions, Add-ins, Fonts and Slides as CSV, or everything as JSON). A normal *Save as*
+   window asks where to save. The detail view has its own **Export JSON / Export CSV** buttons
+   for a single presentation.
 
 Files starting with `~$` are skipped automatically. PowerPoint creates these temporary lock
 files while a deck is open. `.pptm`, `.ppsx` and `.ppsm` files are accepted too, since they
 use the same format. Old-style `.ppt` files (PowerPoint 97–2003) are **not** supported; open
 them in PowerPoint and *Save As* `.pptx` first.
 
-### Command-line mode (no browser)
+### Command-line mode (no window)
 
 ```bash
 python -m pptcheck --scan "C:\path\to\folder" --out report.json
@@ -205,8 +210,9 @@ PPTcheck/
 ├── .github/workflows/        automatic Windows/Mac builds on GitHub
 ├── requirements.txt          Python libraries
 ├── pptcheck/
-│   ├── __main__.py           starts the server (or --scan command-line mode)
-│   ├── server.py             FastAPI web API + serves the dashboard
+│   ├── __main__.py           starts the app (or --scan command-line mode)
+│   ├── desktop.py            the app window and the functions the interface can call
+│   ├── files.py              finding presentations in chosen/dropped folders
 │   ├── analyzer.py           opens the .pptx ZIP and reads the XML
 │   ├── media.py              video/audio measurement (MediaInfo, ffprobe fallback)
 │   ├── paths.py              finds bundled files when running as a packaged app
@@ -230,10 +236,11 @@ python -m pytest tests
 - **"Video engine missing" badge in the top-right:** this only happens when running from source
   if `pymediainfo` didn't install. Run `pip install -r requirements.txt` again. Everything else
   still works without it; only the duration, FPS, resolution and codec fields stay empty.
-- **"PPTcheck has stopped running" banner:** the app was quit, or it closed itself after being
-  idle. Open PPTcheck again.
-- **`python` is not recognised (Windows):** reinstall Python and tick *Add python.exe to PATH*,
-  or use `py` instead of `python`.
-- **Port already in use:** run `python -m pptcheck --port 9000` and open http://127.0.0.1:9000.
+- **"PPTcheck needs the Microsoft Edge WebView2 Runtime" (Windows):** install the free
+  "Evergreen Bootstrapper" from the page that opens, then start PPTcheck again.
+- **Dropping files does nothing:** use **Choose files…** / **Choose folder…** instead, and let us
+  know which Windows/macOS version you're on.
+- **`python` is not recognised (Windows, running from source):** reinstall Python and tick
+  *Add python.exe to PATH*, or use `py` instead of `python`.
 - **A file shows "Error":** hover over the red tag to see why. Common causes are password-protected
   files, corrupt files, or `.ppt` files that were renamed to `.pptx`.

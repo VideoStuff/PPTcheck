@@ -122,4 +122,9 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .detail-body a { color: var(--info); text-decoration: none; white-space: nowrap; }
 .detail-body a:hover { text-decoration: underline; }
-.offline { background: var(--bad-bg); color: var(--bad); padding: 10px 24px; font-weight: 600; }
+.privacy { background: var(--good-bg); color: var(--good); padding: 7px 24px; font-size: 13px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 100; max-width: min(640px, calc(100% - 32px));
+         background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px;
+         padding: 10px 16px; box-shadow: 0 6px 24px rgba(0,0,0,.18); overflow-wrap: anywhere; }
+.toast.ok { border-color: var(--good); }
+.toast.bad { border-color: var(--bad); color: var(--bad); }

@@ -16,117 +16,61 @@
   const isIgnored = (name) => name.startsWith("~$") || name.startsWith("._");
   const baseName = (p) => p.split(/[\\/]/).pop();
 
-  // ------------------------------------------------------------------ health
-  fetch("/api/health").then((r) => r.json()).then((h) => {
+  // ------------------------------------------------------------------ app bridge
+  // All work happens in the PPTcheck app on this computer. The page talks to it
+  // through pywebview's built-in bridge (window.pywebview.api) — there is no
+  // web server and no network involved.
+  let api = null;
+  const bridgeReady = new Promise((resolve) => {
+    const ready = () => { api = window.pywebview.api; resolve(); };
+    if (window.pywebview && window.pywebview.api) ready();
+    else window.addEventListener("pywebviewready", ready, { once: true });
+  });
+
+  function toast(message, kind = "") {
+    const el = $("#toast");
+    el.textContent = message;
+    el.className = `toast ${kind}`;
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.add("hidden"), 6000);
+  }
+
+  bridgeReady.then(async () => {
+    const info = await api.info();
     const el = $("#engineStatus");
-    if (h.media_available) { el.textContent = `v${h.version} · video metrics ✓`; el.className = "pill ok"; el.title = `Video engine: ${h.media_engine}`; }
+    if (info.media_available) { el.textContent = `v${info.version} · video metrics ✓`; el.className = "pill ok"; el.title = `Video engine: ${info.media_engine}`; }
     else { el.textContent = "Video engine missing — duration/FPS unavailable"; el.className = "pill bad"; }
-    if (h.can_quit) $("#quitBtn").classList.remove("hidden");
-  }).catch(() => { $("#engineStatus").textContent = "Server not reachable"; $("#engineStatus").className = "pill bad"; });
-
-  // Tell the app this page is still open (the desktop app quits by itself
-  // when no page has checked in for a while).
-  const heartbeat = () => fetch("/api/heartbeat", { cache: "no-store" })
-    .then((r) => { if (r.ok) $("#offlineBanner").classList.add("hidden"); })
-    .catch(() => $("#offlineBanner").classList.remove("hidden"));
-  heartbeat();
-  setInterval(heartbeat, 30000);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) heartbeat(); });
-
-  $("#quitBtn").onclick = async () => {
-    if (running && !confirm("A scan is still running. Quit anyway?")) return;
-    if (!running && !confirm("Quit PPTcheck? Export anything you want to keep first — results on this page can't be refreshed after quitting.")) return;
-    try { await fetch("/api/quit", { method: "POST", headers: { "X-PPTcheck": "1" } }); } catch (e) { /* already stopped */ }
-    $("#offlineBanner").textContent = "PPTcheck has been closed. You can close this browser tab.";
-    $("#offlineBanner").classList.remove("hidden");
-    $("#quitBtn").classList.add("hidden");
-  };
+  });
 
   // ------------------------------------------------------------------ input
   const recursive = () => $("#recursive").checked;
-  $("#pickFiles").onclick = () => $("#fileInput").click();
-  $("#pickFolder").onclick = () => $("#folderInput").click();
 
-  $("#fileInput").onchange = (e) => {
-    const jobs = [...e.target.files].filter((f) => PPT_RE.test(f.name) && !isIgnored(f.name))
-      .map((f) => ({ kind: "upload", file: f, name: f.name }));
-    e.target.value = "";
-    enqueue(jobs);
-  };
-  $("#folderInput").onchange = (e) => {
-    const jobs = [];
-    for (const f of e.target.files) {
-      const rel = f.webkitRelativePath || f.name;
-      const parts = rel.split("/");
-      if (!PPT_RE.test(f.name) || isIgnored(f.name)) continue;
-      if (parts.some((p, i) => i < parts.length - 1 && p.startsWith("."))) continue;
-      if (!recursive() && parts.length > 2) continue;   // top level only
-      jobs.push({ kind: "upload", file: f, name: rel });
-    }
-    e.target.value = "";
-    if (!jobs.length) alert("No .pptx files found in that folder.");
-    enqueue(jobs);
-  };
+  async function addPaths(paths) {
+    if (!paths || !paths.length) return;
+    await bridgeReady;
+    const res = await api.expand_paths(paths, recursive());
+    if (res.errors && res.errors.length) toast(res.errors.join(" "), "bad");
+    if (!res.jobs.length) { toast("No PowerPoint files (.pptx) found in what you chose.", "bad"); return; }
+    enqueue(res.jobs.map((j) => ({ path: j.path, name: j.name })));
+  }
 
+  $("#pickFiles").onclick = async () => { await bridgeReady; addPaths(await api.choose_files()); };
+  $("#pickFolder").onclick = async () => { await bridgeReady; addPaths(await api.choose_folder()); };
+
+  // Drag-and-drop: the app receives the dropped files' locations directly
+  // (see desktop.py) and calls PPTcheck.dropped(paths).
   const dz = $("#dropZone");
-  ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("over"); }));
-  ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, () => dz.classList.remove("over")));
-  // Stop the browser from opening files dropped outside the zone.
+  let dragDepth = 0;
+  window.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; dz.classList.add("over"); });
+  window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; dz.classList.remove("over"); } });
   window.addEventListener("dragover", (e) => e.preventDefault());
-  window.addEventListener("drop", (e) => e.preventDefault());
-  dz.addEventListener("drop", async (e) => {
-    e.preventDefault();
-    const items = [...(e.dataTransfer.items || [])];
-    const entries = items.map((it) => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
-    const jobs = [];
-    if (entries.length) {
-      for (const entry of entries) await walkEntry(entry, "", 0, jobs);
-    } else {
-      for (const f of e.dataTransfer.files) if (PPT_RE.test(f.name) && !isIgnored(f.name)) jobs.push({ kind: "upload", file: f, name: f.name });
-    }
-    if (!jobs.length) alert("No .pptx files found in what you dropped.");
-    enqueue(jobs);
-  });
-
-  async function walkEntry(entry, prefix, depth, jobs) {
-    const path = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isFile) {
-      if (PPT_RE.test(entry.name) && !isIgnored(entry.name)) {
-        const file = await new Promise((res, rej) => entry.file(res, rej));
-        jobs.push({ kind: "upload", file, name: path });
-      }
-      return;
-    }
-    if (!entry.isDirectory || entry.name.startsWith(".")) return;
-    if (depth >= 1 && !recursive()) return;
-    const reader = entry.createReader();
-    // readEntries returns results in chunks; keep reading until empty.
-    for (;;) {
-      const batch = await new Promise((res, rej) => reader.readEntries(res, rej));
-      if (!batch.length) break;
-      for (const child of batch) await walkEntry(child, path, depth + 1, jobs);
-    }
-  }
-
-  $("#scanPath").onclick = scanPath;
-  $("#folderPath").addEventListener("keydown", (e) => { if (e.key === "Enter") scanPath(); });
-  async function scanPath() {
-    const path = $("#folderPath").value.trim();
-    if (!path) return;
-    try {
-      const r = await fetch(`/api/list-folder?path=${encodeURIComponent(path)}&recursive=${recursive()}`);
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.detail || r.statusText);
-      if (!data.files.length) { alert("No .pptx files found in that folder."); return; }
-      const folderName = baseName(data.folder.replace(/[\\/]+$/, ""));
-      enqueue(data.files.map((f) => ({ kind: "path", path: f.path, name: `${folderName}/${f.relative_path.replace(/\\/g, "/")}` })));
-    } catch (err) { alert("Could not scan folder: " + err.message); }
-  }
+  window.addEventListener("drop", (e) => { e.preventDefault(); dragDepth = 0; dz.classList.remove("over"); });
 
   // ------------------------------------------------------------------ queue
   const queue = [];
   const active = new Set();
   let total = 0, done = 0, activeWorkers = 0;
+  const batchWaiters = [];
 
   function enqueue(jobs) {
     if (!jobs.length) return;
@@ -140,7 +84,7 @@
     pump();
   }
 
-  // Keep up to CONCURRENCY workers busy; new files dropped mid-scan join the same batch.
+  // Keep up to CONCURRENCY workers busy; new files added mid-scan join the same batch.
   function pump() {
     while (activeWorkers < CONCURRENCY && queue.length && !cancelRequested) {
       activeWorkers++;
@@ -156,7 +100,7 @@
       try {
         results.set(job.name, await analyse(job));
       } catch (err) {
-        results.set(job.name, errorReport(job, err.message));
+        results.set(job.name, errorReport(job, (err && err.message) || String(err)));
       }
       active.delete(job.name);
       done++;
@@ -176,6 +120,7 @@
     $("#cancelBtn").classList.add("hidden");
     running = false;
     renderTable();
+    batchWaiters.splice(0).forEach((resolve) => resolve());
   }
 
   function updateProgress() {
@@ -186,26 +131,17 @@
   $("#cancelBtn").onclick = () => { cancelRequested = true; $("#progressText").textContent = "Cancelling after current file(s)…"; };
 
   async function analyse(job) {
-    let r;
-    if (job.kind === "upload") {
-      const fd = new FormData();
-      fd.append("file", job.file, job.file.name);
-      fd.append("relative_path", job.name);
-      r = await fetch("/api/analyze", { method: "POST", body: fd });
-    } else {
-      r = await fetch("/api/analyze-path", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: job.path, display_name: job.name }) });
-    }
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    await bridgeReady;
+    const data = await api.analyze(job.path, job.name);
+    if (!data || data.bridge_error) throw new Error((data && data.bridge_error) || "No result");
     data._key = job.name;
     return data;
   }
 
   function errorReport(job, msg) {
     return { _key: job.name, file_name: job.name, error: msg, slide_count: 0, hidden_slide_count: 0,
-      file_size_mb: job.file ? +(job.file.size / 1048576).toFixed(2) : null, summary: {}, videos: [], audio: [],
-      transitions: [], animations: [], addins: [], slides: [], warnings: [msg] };
+      file_size_mb: null, summary: {}, videos: [], audio: [], transitions: [], animations: [],
+      addins: [], fonts: [], slides: [], warnings: [msg] };
   }
 
   // ------------------------------------------------------------------ table
@@ -283,7 +219,7 @@
     if (tr) openDetail(results.get(tr.dataset.key));
   });
   $("#clearBtn").onclick = () => {
-    if (running) { alert("Wait for the current scan to finish (or cancel it) first."); return; }
+    if (running) { toast("Wait for the current scan to finish (or cancel it) first.", "bad"); return; }
     if (results.size && confirm("Remove all results from the dashboard?")) { results.clear(); renderTable(); $("#progress").classList.add("hidden"); }
   };
 
@@ -294,8 +230,9 @@
       <tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td class="${headers[i].num ? "num" : ""}">${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   }
   // Only server-generated https:// links are rendered, opened in a new tab.
+  // Links open in the computer's normal web browser (see the click handler below).
   const link = (l) => (/^https:\/\//.test(l.url)
-    ? `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>` : "");
+    ? `<a href="${esc(l.url)}" class="ext" rel="noopener noreferrer">${esc(l.label)} ↗</a>` : "");
   const slideList = (arr) => (arr && arr.length ? arr.join(", ") : "—");
 
   function openDetail(r) {
@@ -410,11 +347,12 @@
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }
   const toCsv = (headers, rows) => "﻿" + [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
-  function download(name, content, type) {
-    const url = URL.createObjectURL(new Blob([content], { type }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: name });
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // Exports are written by the app after the usual "Save as" window.
+  async function download(name, content) {
+    await bridgeReady;
+    const res = await api.save_file(name, content);
+    if (res && res.saved) toast(`Saved: ${res.saved}`, "ok");
+    else if (res && res.error) toast(`Could not save: ${res.error}`, "bad");
   }
   const stamp = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   const clean = (r) => { const { _key, ...rest } = r; return rest; };
@@ -460,21 +398,54 @@
 
   document.querySelectorAll("[data-export]").forEach((btn) => btn.addEventListener("click", () => {
     const rows = visibleRows();
-    if (!rows.length) { alert("Nothing to export yet."); return; }
+    if (!rows.length) { toast("Nothing to export yet.", "bad"); return; }
     const kind = btn.dataset.export;
-    if (kind === "json") download(`pptcheck_${stamp()}.json`, JSON.stringify(rows.map(clean), null, 2), "application/json");
-    else download(`pptcheck_${kind}_${stamp()}.csv`, builders[kind](rows), "text/csv;charset=utf-8");
+    if (kind === "json") download(`pptcheck_${stamp()}.json`, JSON.stringify(rows.map(clean), null, 2));
+    else download(`pptcheck_${kind}_${stamp()}.csv`, builders[kind](rows));
   }));
 
   const safeName = (n) => baseName(n).replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "_");
   $("#detailJson").onclick = () => currentDetail && download(`${safeName(currentDetail.file_name)}_audit.json`,
-    JSON.stringify(clean(currentDetail), null, 2), "application/json");
+    JSON.stringify(clean(currentDetail), null, 2));
   $("#detailCsv").onclick = () => {
     if (!currentDetail) return;
     const r = [currentDetail];
     // One CSV containing every section, separated by blank lines.
     const parts = ["summary", "videos", "transitions", "addins", "fonts", "slides"].map((k) => `${k.toUpperCase()}\r\n` + builders[k](r).slice(1));
-    download(`${safeName(currentDetail.file_name)}_audit.csv`, "﻿" + parts.join("\r\n\r\n"), "text/csv;charset=utf-8");
+    download(`${safeName(currentDetail.file_name)}_audit.csv`, "﻿" + parts.join("\r\n\r\n"));
+  };
+
+  document.addEventListener("click", async (e) => {
+    const a = e.target.closest("a.ext");
+    if (!a) return;
+    e.preventDefault();
+    await bridgeReady;
+    api.open_url(a.getAttribute("href"));
+  });
+
+  // ------------------------------------------------------------------ called by the app
+  window.PPTcheck = {
+    // Files/folders dropped on the window (full locations supplied by the app).
+    dropped: (paths) => addPaths(paths),
+
+    // Automated check used when building the app: analyse a file through the
+    // real interface, open its detail view, and report what was shown.
+    async selfTest(path) {
+      await bridgeReady;
+      const finished = new Promise((resolve) => batchWaiters.push(resolve));
+      await addPaths([path]);
+      await finished;
+      const row = document.querySelector("#summaryTable tbody tr");
+      if (row) row.click();
+      const text = (sel) => (document.querySelector(sel) || {}).innerText || "";
+      await api.selftest_done({
+        rows: document.querySelectorAll("#summaryTable tbody tr").length,
+        table: text("#summaryTable"),
+        detail: text("#detailBody"),
+        engine: text("#engineStatus"),
+        csv: builders.summary(visibleRows()).slice(0, 2000),
+      });
+    },
   };
 
   renderTable();

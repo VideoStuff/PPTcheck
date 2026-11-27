@@ -77,3 +77,29 @@ def test_font_classification():
     assert classify("Aptos Display")["status"] == "cloud"
     assert classify("Arial")["status"] == "standard"
     assert classify("Proxima Nova")["status"] == "nonstandard"
+
+
+def test_expand_paths(tmp_path):
+    from pptcheck.files import expand_paths
+    (tmp_path / "Decks" / "sub").mkdir(parents=True)
+    for rel in ("Decks/a.pptx", "Decks/~$a.pptx", "Decks/notes.txt", "Decks/sub/b.pptx", "other/a.pptx"):
+        f = tmp_path / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"x")
+    res = expand_paths([str(tmp_path / "Decks"), str(tmp_path / "other" / "a.pptx"), str(tmp_path / "missing.pptx")])
+    names = [j["name"] for j in res["jobs"]]
+    assert names == ["Decks/a.pptx", "Decks/sub/b.pptx", "a.pptx"]
+    assert res["errors"] and "missing.pptx" in res["errors"][0]
+    top = expand_paths([str(tmp_path / "Decks")], recursive=False)
+    assert [j["name"] for j in top["jobs"]] == ["Decks/a.pptx"]
+
+
+def test_page_is_self_contained():
+    import re
+    from pptcheck.desktop import build_page_html
+    html = build_page_html()
+    assert "Content-Security-Policy" in html and "connect-src 'none'" in html
+    assert '<script src=' not in html and 'rel="stylesheet"' not in html
+    # The page must not reference any outside resource (only links the user clicks).
+    assert not re.search(r'(src|href)="https?://', html)
+    assert "fetch(" not in html
