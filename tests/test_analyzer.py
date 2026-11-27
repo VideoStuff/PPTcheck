@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from make_sample import build  # noqa: E402
 from pptcheck.analyzer import analyze_pptx  # noqa: E402
-from pptcheck.media import ffprobe_available  # noqa: E402
+from pptcheck.media import media_available as ffprobe_available  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -33,7 +33,7 @@ def test_video(report):
         assert v["duration"] == "00:00:05"
         assert v["fps"] == 30.0
         assert v["resolution"] == "1280x720"
-        assert v["video_codec"].startswith("h264")
+        assert v["video_codec"].startswith("H.264")
 
 
 def test_transitions_and_animations(report):

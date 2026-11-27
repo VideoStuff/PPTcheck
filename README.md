@@ -29,82 +29,75 @@ program (built with FastAPI) that opens that archive directly. It reads the slid
 `<p:transition>` and animation timing, follows each slide's relationship file
 (`ppt/slides/_rels/slideN.xml.rels`) to find videos, web add-ins, tags and hyperlinks, and
 scans `ppt/webextensions/`. Each embedded video in `ppt/media/` is copied out to a temporary
-file and measured with **ffprobe** (part of FFmpeg), which is where the exact duration, FPS and
-codec come from. The dashboard is a plain web page that the Python program serves to your browser.
+file and measured with **MediaInfo** (built in), which is where the exact duration, FPS and codec
+come from. The dashboard is a plain web page that the Python program serves to your browser.
 
 ```
 Browser dashboard  ──(sends file)──▶  Python server (FastAPI)  ──▶  unzip + read XML (lxml)
-   (static/*.html/js)  ◀──(JSON report)──                        └─▶  ffprobe on each video
+   (static/*.html/js)  ◀──(JSON report)──                        └─▶  MediaInfo on each video
 ```
 
 ---
 
-## Setup (one-time)
+## Download and run (no installation needed)
 
-You need two free programs: **Python** (version 3.10 or newer), which runs PPTcheck, and
-**FFmpeg**, which measures videos.
+PPTcheck is packaged as a standalone app. Python, the video-analysis engine and everything
+else it needs are built in, so people don't need to install anything.
 
-### Windows
+1. Go to the repository's **Releases** page on GitHub and download the zip for your computer:
+   - **Windows:** `PPTcheck-Windows.zip`
+   - **Mac with Apple chip (M1 and newer):** `PPTcheck-macOS-AppleSilicon.zip`
+   - **Older Intel Mac:** `PPTcheck-macOS-Intel.zip`
+2. Unzip it. On a Mac, drag `PPTcheck.app` into your Applications folder.
+3. Double-click **PPTcheck**. Your browser opens the dashboard.
+4. When you're finished, click **Quit PPTcheck** at the top-right of the dashboard. It also
+   stops by itself about 15 minutes after you close the browser tab.
 
-1. **Install Python:** go to <https://www.python.org/downloads/> and click the big
-   "Download Python" button. When the installer opens, **tick "Add python.exe to PATH"** at the
-   bottom before you click *Install Now*.
-2. **Install FFmpeg:** open the Start menu, type `PowerShell`, open it, and paste:
-   ```powershell
-   winget install --id Gyan.FFmpeg -e
-   ```
-   Then **close PowerShell and open a new window** so it picks up the new program.
-   (If `winget` isn't available: download the "release essentials" zip from
-   <https://www.gyan.dev/ffmpeg/builds/>, unzip it to `C:\ffmpeg`, and add `C:\ffmpeg\bin` to
-   your PATH.)
-3. Check that both work by typing these in the new PowerShell window. Each one should print a version number:
-   ```powershell
-   python --version
-   ffprobe -version
-   ```
+**First launch security prompts:** the app isn't signed with a paid Apple/Microsoft developer
+certificate, so each computer asks for confirmation once:
+- **Windows** ("Windows protected your PC"): click **More info**, then **Run anyway**.
+- **Mac** ("cannot be opened" / "Apple could not verify"): click **Done**, then open
+  **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
+  If it says the app "is damaged", run `xattr -cr /Applications/PPTcheck.app` in Terminal.
 
-### macOS
-
-1. Install Homebrew (a tool installer) if you don't have it. Open the **Terminal** app and paste
-   the command shown at <https://brew.sh>.
-2. Then run:
-   ```bash
-   brew install python ffmpeg
-   ```
-
-### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt update && sudo apt install -y python3 python3-venv ffmpeg
-```
-
-### Get the PPTcheck files
-
-Either download the repository as a ZIP from GitHub (green **Code** button → **Download ZIP**,
-then unzip it), or if you use git:
-
-```bash
-git clone https://github.com/VideoStuff/PPTcheck.git
-cd PPTcheck
-```
+The same instructions are in `READ ME FIRST.txt` inside each zip.
 
 ---
 
-## Running it
+## For developers: building the downloadable apps
 
-### Easiest way: double-click
+The apps are built automatically by **GitHub Actions**: GitHub's own Windows and Mac machines
+run the steps in `.github/workflows/build.yml`.
 
-- **Windows:** double-click **`run.bat`** in the PPTcheck folder.
-- **macOS/Linux:** in Terminal, `cd` into the PPTcheck folder and run `./run.sh`.
+- **Every push** that changes the app runs the tests and builds the apps on Windows and macOS
+  (Apple Silicon and Intel). It also opens each built app and checks it against a test
+  presentation (`packaging/smoke_test.py`). The zips are attached to that run: open the
+  repository's **Actions** tab, click the run, then go to **Artifacts**. Downloading these
+  requires a GitHub login.
+- **Publishing a release:** create a version tag, e.g. `v1.2.0`. On GitHub, go to
+  **Releases → Draft a new release**, type the tag `v1.2.0`, and publish. Or, with git, run
+  `git tag v1.2.0 && git push origin v1.2.0`. The workflow then builds the apps and attaches
+  the zips to the release. People can download them from the Releases page without a GitHub
+  account, as long as the repository is public.
 
-The first run takes a minute because it creates a private Python environment in a `.venv`
-folder and installs the libraries listed in `requirements.txt`. That way nothing else on your
-computer gets changed. Later runs start in a couple of seconds.
+To build on your own computer instead (this produces an app for that computer's operating
+system only):
 
-Your browser then opens **http://127.0.0.1:8765**. Leave the black terminal window open while
-you use the app, and close it (or press `Ctrl+C`) when you're done.
+```bash
+pip install -r requirements.txt pyinstaller
+pyinstaller packaging/pptcheck.spec --noconfirm
+# result: dist/PPTcheck.exe (Windows), dist/PPTcheck.app (Mac), dist/PPTcheck (Linux)
+```
 
-### Manual way (if you prefer typing the commands)
+### Running from source (for development)
+
+Requires Python 3.10+. FFmpeg is optional: video details come from the MediaInfo library,
+which installs automatically with `pymediainfo`.
+
+- **Windows:** double-click `run.bat`. **macOS/Linux:** run `./run.sh`.
+  The first run creates a private Python environment in a `.venv` folder.
+  If you ran an older version before, delete `.venv` so the new libraries get installed.
+- Or manually:
 
 ```bash
 python -m venv .venv
@@ -158,7 +151,7 @@ python -m pptcheck --scan "C:\path\to\folder" --out report.json
 |---|---|
 | Slide order / hidden slides | `ppt/presentation.xml` and `show="0"` on each `<p:sld>` |
 | Videos & audio | `<a:videoFile>`, `<a:audioFile>`, `<p14:media>` in slide XML → slide `.rels` → `ppt/media/*` |
-| Video metrics | ffprobe on each extracted media file (duration, avg frame rate, width×height, codecs) |
+| Video metrics | MediaInfo (or ffprobe, if MediaInfo is unavailable) on each extracted media file: duration, frame rate, width×height, codecs |
 | Transitions | `<p:transition>`, including Morph (`p159:morph`) and newer effects in `mc:AlternateContent`; `advTm` = auto-advance |
 | Animations | `<p:timing>` → `<p:cTn presetClass=…>` (entrance/emphasis/exit/motion path). Video "play" triggers are counted separately. |
 | Fonts | `<a:latin>`, `<a:ea>`, `<a:cs>`, `<a:sym>`, `<a:buFont>` in slides, charts, SmartArt, masters and layouts; theme `<a:fontScheme>`; `<p:embeddedFontLst>` |
@@ -206,13 +199,16 @@ FPS can't be measured because PPTcheck doesn't download anything from the intern
 
 ```
 PPTcheck/
-├── run.bat / run.sh          one-click launchers (create .venv on first run)
+├── run.bat / run.sh          run from source (developers)
+├── packaging/                desktop-app build recipe, icon, smoke test, READ ME FIRST.txt
+├── .github/workflows/        automatic Windows/Mac builds on GitHub
 ├── requirements.txt          Python libraries
 ├── pptcheck/
 │   ├── __main__.py           starts the server (or --scan command-line mode)
 │   ├── server.py             FastAPI web API + serves the dashboard
 │   ├── analyzer.py           opens the .pptx ZIP and reads the XML
-│   ├── media.py              ffprobe video/audio measurement
+│   ├── media.py              video/audio measurement (MediaInfo, ffprobe fallback)
+│   ├── paths.py              finds bundled files when running as a packaged app
 │   ├── addins.py             list of known add-ins and their fingerprints
 │   ├── fonts.py              font lists (standard/Office/Google…), download links, installed-font check
 │   └── static/               the dashboard (index.html, app.js, styles.css)
@@ -230,10 +226,11 @@ python -m pytest tests
 
 ## Troubleshooting
 
-- **"FFmpeg not found" badge in the top-right:** FFmpeg isn't installed, or the terminal was
-  opened before you installed it. Close the terminal, open a new one, and run `ffprobe -version`
-  to check. Without FFmpeg everything else still works; only the duration, FPS, resolution and
-  codec fields stay empty.
+- **"Video engine missing" badge in the top-right:** this only happens when running from source
+  if `pymediainfo` didn't install. Run `pip install -r requirements.txt` again. Everything else
+  still works without it; only the duration, FPS, resolution and codec fields stay empty.
+- **"PPTcheck has stopped running" banner:** the app was quit, or it closed itself after being
+  idle. Open PPTcheck again.
 - **`python` is not recognised (Windows):** reinstall Python and tick *Add python.exe to PATH*,
   or use `py` instead of `python`.
 - **Port already in use:** run `python -m pptcheck --port 9000` and open http://127.0.0.1:9000.

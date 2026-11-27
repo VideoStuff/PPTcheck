@@ -1,0 +1,39 @@
+PPTcheck - PowerPoint technical auditor
+=======================================
+
+PPTcheck checks .pptx files for videos (length, size, frame rate, resolution),
+transitions, animations, add-ins such as Slido or Mentimeter, and fonts that
+need installing. Everything runs on your own computer: no files are uploaded
+anywhere, and you don't need to install anything else.
+
+HOW TO START
+------------
+Windows:  double-click PPTcheck.exe
+Mac:      double-click PPTcheck.app (move it to your Applications folder first)
+
+Your web browser opens the PPTcheck dashboard. PPTcheck runs quietly in the
+background: there's no separate window. Drop .pptx files or folders onto the
+page to check them.
+
+HOW TO STOP
+-----------
+Click "Quit PPTcheck" in the top-right of the dashboard. It also stops by
+itself about 15 minutes after you close the browser tab.
+
+FIRST-TIME SECURITY WARNINGS
+----------------------------
+PPTcheck isn't (yet) signed with a paid Microsoft/Apple developer certificate,
+so the first time you open it your computer asks you to confirm:
+
+Windows - "Windows protected your PC":
+  click "More info", then "Run anyway".
+
+Mac - "PPTcheck cannot be opened" / "Apple could not verify...":
+  1. Click "Done" (or "OK").
+  2. Open System Settings > Privacy & Security, scroll down, and click
+     "Open Anyway" next to the PPTcheck message. Enter your password.
+  If the Mac instead says the app "is damaged", open the Terminal app and run:
+     xattr -cr /Applications/PPTcheck.app
+  then open it again.
+
+You only need to do this once.

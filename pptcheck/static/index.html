@@ -10,8 +10,10 @@
 <header class="topbar">
   <div class="brand">PPT<span>check</span></div>
   <div class="tagline">Technical audit for PowerPoint files — videos, transitions, animations, add-ins &amp; fonts</div>
-  <div id="ffprobeStatus" class="pill">Checking FFmpeg…</div>
+  <div id="engineStatus" class="pill">Starting…</div>
+  <button class="btn small hidden" id="quitBtn" type="button" title="Stop PPTcheck running in the background">Quit PPTcheck</button>
 </header>
+<div id="offlineBanner" class="offline hidden">PPTcheck has stopped running. Open the PPTcheck app again to keep working (your results on this page will be lost when you refresh).</div>
 
 <main>
   <section class="card input-card">

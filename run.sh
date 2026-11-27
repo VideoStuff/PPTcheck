@@ -8,5 +8,5 @@ if [ ! -d .venv ]; then
   ./.venv/bin/python -m pip install --upgrade pip >/dev/null
   ./.venv/bin/python -m pip install -r requirements.txt
 fi
-command -v ffprobe >/dev/null || echo "WARNING: ffprobe not found. Install FFmpeg for video duration/FPS (see README)."
+
 exec ./.venv/bin/python -m pptcheck "$@"

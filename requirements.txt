@@ -2,6 +2,7 @@ fastapi>=0.110
 uvicorn>=0.29
 python-multipart>=0.0.9
 lxml>=5.0
+pymediainfo>=6.0   # reads video duration/FPS/codec (MediaInfo library included)
 fonttools>=4.40   # checks which fonts are installed on this computer
 # Only needed to generate the test presentation (tests/make_sample.py):
 python-pptx>=1.0

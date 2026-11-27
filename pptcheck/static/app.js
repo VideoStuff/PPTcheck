@@ -18,10 +18,29 @@
 
   // ------------------------------------------------------------------ health
   fetch("/api/health").then((r) => r.json()).then((h) => {
-    const el = $("#ffprobeStatus");
-    if (h.ffprobe) { el.textContent = "FFmpeg ✓ video metrics enabled"; el.className = "pill ok"; el.title = h.ffprobe_version || ""; }
-    else { el.textContent = "FFmpeg not found — video duration/FPS unavailable"; el.className = "pill bad"; }
-  }).catch(() => { $("#ffprobeStatus").textContent = "Server not reachable"; $("#ffprobeStatus").className = "pill bad"; });
+    const el = $("#engineStatus");
+    if (h.media_available) { el.textContent = `v${h.version} · video metrics ✓`; el.className = "pill ok"; el.title = `Video engine: ${h.media_engine}`; }
+    else { el.textContent = "Video engine missing — duration/FPS unavailable"; el.className = "pill bad"; }
+    if (h.can_quit) $("#quitBtn").classList.remove("hidden");
+  }).catch(() => { $("#engineStatus").textContent = "Server not reachable"; $("#engineStatus").className = "pill bad"; });
+
+  // Tell the app this page is still open (the desktop app quits by itself
+  // when no page has checked in for a while).
+  const heartbeat = () => fetch("/api/heartbeat", { cache: "no-store" })
+    .then((r) => { if (r.ok) $("#offlineBanner").classList.add("hidden"); })
+    .catch(() => $("#offlineBanner").classList.remove("hidden"));
+  heartbeat();
+  setInterval(heartbeat, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) heartbeat(); });
+
+  $("#quitBtn").onclick = async () => {
+    if (running && !confirm("A scan is still running. Quit anyway?")) return;
+    if (!running && !confirm("Quit PPTcheck? Export anything you want to keep first — results on this page can't be refreshed after quitting.")) return;
+    try { await fetch("/api/quit", { method: "POST", headers: { "X-PPTcheck": "1" } }); } catch (e) { /* already stopped */ }
+    $("#offlineBanner").textContent = "PPTcheck has been closed. You can close this browser tab.";
+    $("#offlineBanner").classList.remove("hidden");
+    $("#quitBtn").classList.add("hidden");
+  };
 
   // ------------------------------------------------------------------ input
   const recursive = () => $("#recursive").checked;

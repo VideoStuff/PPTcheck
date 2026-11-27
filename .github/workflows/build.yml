@@ -1,0 +1,105 @@
+# Builds the PPTcheck desktop apps on GitHub's Windows and Mac machines.
+#
+# - Every push that changes the app: builds + tests, and attaches the apps to
+#   the workflow run (Actions tab > the run > "Artifacts" section).
+# - Pushing a version tag such as v1.2.0: also publishes a GitHub Release with
+#   the downloads attached (Releases page of the repository).
+name: Build desktop apps
+
+on:
+  push:
+    paths:
+      - "pptcheck/**"
+      - "packaging/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".github/workflows/build.yml"
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pytest tests -q
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+          - os: macos-latest
+            label: macOS-AppleSilicon
+          - os: macos-15-intel
+            label: macOS-Intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller
+      - name: Build app
+        env:
+          PPTCHECK_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '1.2.0' }}
+        run: pyinstaller packaging/pptcheck.spec --noconfirm
+
+      - name: Smoke test and package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python packaging/smoke_test.py dist/PPTcheck.exe
+          New-Item -ItemType Directory -Force out/PPTcheck | Out-Null
+          Copy-Item dist/PPTcheck.exe out/PPTcheck/
+          Copy-Item "packaging/READ ME FIRST.txt" out/PPTcheck/
+          Compress-Archive -Path out/PPTcheck -DestinationPath "PPTcheck-${{ matrix.label }}.zip"
+
+      - name: Smoke test and package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep --sign - dist/PPTcheck.app
+          python packaging/smoke_test.py dist/PPTcheck.app/Contents/MacOS/PPTcheck
+          mkdir -p out/PPTcheck
+          ditto dist/PPTcheck.app out/PPTcheck/PPTcheck.app
+          cp "packaging/READ ME FIRST.txt" out/PPTcheck/
+          ditto -c -k --keepParent out/PPTcheck "PPTcheck-${{ matrix.label }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PPTcheck-${{ matrix.label }}
+          path: PPTcheck-${{ matrix.label }}.zip
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloads
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: downloads/*.zip
+          body: |
+            ## Download PPTcheck
+            - **Windows:** `PPTcheck-Windows.zip`
+            - **Mac (M1/M2/M3/M4 and newer):** `PPTcheck-macOS-AppleSilicon.zip`
+            - **Mac (older Intel models):** `PPTcheck-macOS-Intel.zip`
+
+            Unzip, then double-click PPTcheck. No installation needed.
+            See "READ ME FIRST.txt" inside the zip for first-launch security prompts.

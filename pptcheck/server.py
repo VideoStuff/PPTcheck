@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 import tempfile
+import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -12,28 +13,48 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .analyzer import analyze_pptx
+from . import __version__
 from .fonts import preload_installed_fonts
-from .media import FFPROBE, ffprobe_available
+from .media import engine_name, media_available
+from .paths import resource_dir
 
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+STATIC_DIR = os.path.join(resource_dir(), "static")
 PPT_EXTENSIONS = (".pptx", ".pptm", ".ppsx", ".ppsm")
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+APP_ID = "pptcheck"
 
-app = FastAPI(title="PPTcheck", version="1.1.0")
+# Updated whenever an open dashboard tab checks in (used for idle shutdown).
+last_heartbeat = time.monotonic()
+# Set by __main__ to the running uvicorn.Server so /api/quit can stop it.
+server_handle = None
 
 
-@app.on_event("startup")
-def _startup() -> None:
+@asynccontextmanager
+async def lifespan(_app):
     # Reading the installed-font list takes a few seconds; start it early.
     preload_installed_fonts()
+    yield
+
+
+app = FastAPI(title="PPTcheck", version=__version__, lifespan=lifespan)
+
+
+def _hostname(value: str) -> str:
+    value = value.split("://", 1)[-1]
+    if value.startswith("["):
+        return value.split("]", 1)[0] + "]"
+    return value.rsplit(":", 1)[0].lower()
 
 
 @app.middleware("http")
-async def only_local_hosts(request: Request, call_next):
-    # Protects against "DNS rebinding": a web page on the internet pretending
-    # to be localhost to read files through this API.
-    host = (request.headers.get("host") or "").rsplit(":", 1)[0].lower()
-    if host not in ALLOWED_HOSTS:
+async def only_local_requests(request: Request, call_next):
+    # 1. Host check: blocks "DNS rebinding" (a web page on the internet
+    #    pretending to be localhost to read files through this API).
+    # 2. Origin check: blocks other websites open in the browser from sending
+    #    requests to PPTcheck.
+    host = _hostname(request.headers.get("host") or "")
+    origin = request.headers.get("origin")
+    if host not in ALLOWED_HOSTS or (origin and _hostname(origin) not in ALLOWED_HOSTS):
         return JSONResponse({"detail": "PPTcheck only accepts requests from this computer."},
                             status_code=403)
     return await call_next(request)
@@ -47,14 +68,27 @@ def is_presentation(name: str) -> bool:
 
 @app.get("/api/health")
 def health():
-    version = None
-    if FFPROBE:
-        try:
-            out = subprocess.run([FFPROBE, "-version"], capture_output=True, text=True, timeout=10)
-            version = (out.stdout.splitlines() or [""])[0]
-        except (OSError, subprocess.TimeoutExpired):
-            version = None
-    return {"ok": True, "ffprobe": ffprobe_available(), "ffprobe_version": version}
+    return {"ok": True, "app": APP_ID, "version": __version__,
+            "media_engine": engine_name(), "media_available": media_available(),
+            "can_quit": server_handle is not None}
+
+
+@app.get("/api/heartbeat")
+def heartbeat():
+    global last_heartbeat
+    last_heartbeat = time.monotonic()
+    return {"ok": True}
+
+
+@app.post("/api/quit")
+def quit_app(request: Request):
+    # The custom header can't be sent by other websites without permission.
+    if request.headers.get("x-pptcheck") != "1":
+        raise HTTPException(403, "Missing header")
+    if server_handle is None:
+        raise HTTPException(400, "Not running as the desktop app")
+    server_handle.should_exit = True
+    return {"ok": True}
 
 
 @app.post("/api/analyze")

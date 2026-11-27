@@ -7,6 +7,5 @@ if not exist .venv (
   .venv\Scripts\python -m pip install --upgrade pip
   .venv\Scripts\python -m pip install -r requirements.txt
 )
-where ffprobe >nul 2>nul || echo WARNING: ffprobe not found. Install FFmpeg for video duration/FPS (see README).
 .venv\Scripts\python -m pptcheck %*
 pause
