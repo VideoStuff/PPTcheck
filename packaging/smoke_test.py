@@ -6,7 +6,8 @@ Usage: python packaging/smoke_test.py PATH_TO_PACKAGED_EXECUTABLE [--gui]
    the results, including video metrics (proves MediaInfo was bundled).
 2. With --gui: opens the real app window, analyses the same deck through the
    interface (choose -> analyse -> detail view), and checks what the window
-   showed. A screenshot is saved to smoke/gui.png.
+   showed, and creates the PDF report. A screenshot is saved to smoke/gui.png
+   and the PDF to smoke/gui.pdf.
 """
 import json
 import os
@@ -56,6 +57,9 @@ if gui:
     check("window: video metrics shown", "00:00:05" in page.get("detail", ""))
     check("window: fonts section shown", "Gotham Rounded" in page.get("detail", ""))
     check("window: video engine ready", "video metrics" in page.get("engine", ""))
+    pdf_path = os.path.splitext(gui_path)[0] + ".pdf"
+    pdf_ok = os.path.exists(pdf_path) and open(pdf_path, "rb").read(5) == b"%PDF-" and os.path.getsize(pdf_path) > 5000
+    check("window: PDF report created", page.get("pdf_written") is True and pdf_ok)
     if not result.get("ok"):
         print(json.dumps(result, indent=2)[:3000])
 

@@ -2,5 +2,6 @@ lxml>=5.0
 pymediainfo>=6.0   # reads video duration/FPS/codec (MediaInfo library included)
 fonttools>=4.40    # checks which fonts are installed on this computer
 pywebview>=5.0     # the app window (uses the web engine built into Windows/macOS)
+reportlab>=4.0     # creates the PDF report
 # Only needed to generate the test presentation (tests/make_sample.py):
 python-pptx>=1.0

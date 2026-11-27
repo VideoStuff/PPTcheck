@@ -1,7 +1,7 @@
 """Start PPTcheck.
 
     python -m pptcheck                        open the PPTcheck window
-    python -m pptcheck --scan PATH [--out report.json]
+    python -m pptcheck --scan PATH [--out report.json] [--pdf report.pdf]
                                               command-line mode, no window
     python -m pptcheck --gui-selftest OUT.json
                                               build check: open the window, analyse the
@@ -38,6 +38,12 @@ def _scan(args) -> None:
         print(f"[{i}/{len(paths)}] {p}", file=sys.stderr)
         reports.append(analyze_pptx(p, display_name=os.path.relpath(p, target) if os.path.isdir(target) else None,
                                     source_dir=os.path.dirname(p)))
+    if args.pdf:
+        from .report_pdf import build_pdf
+        build_pdf(reports, args.pdf)
+        print(f"Wrote {args.pdf}", file=sys.stderr)
+        if not args.out:
+            return
     text = json.dumps(reports, indent=2)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
@@ -52,6 +58,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="pptcheck", description="PowerPoint technical auditor")
     parser.add_argument("--scan", metavar="PATH", help="command-line mode: analyse a .pptx file or folder")
     parser.add_argument("--out", metavar="FILE", help="with --scan: write JSON here (default: print)")
+    parser.add_argument("--pdf", metavar="FILE", help="with --scan: write a PDF report here")
     parser.add_argument("--gui-selftest", metavar="OUT", help=argparse.SUPPRESS)
     parser.add_argument("--selftest-file", metavar="PPTX", help=argparse.SUPPRESS)
     # macOS may pass "-psn_..." when launching apps; ignore unknown arguments.

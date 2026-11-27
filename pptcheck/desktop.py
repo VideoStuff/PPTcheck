@@ -25,6 +25,7 @@ from .analyzer import analyze_pptx
 from .files import expand_paths, is_presentation
 from .media import engine_name, media_available
 from .paths import resource_dir
+from .report_pdf import build_pdf
 
 WINDOW_TITLE = "PPTcheck"
 WEBVIEW2_URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
@@ -96,23 +97,25 @@ class Api:
             return {"bridge_error": f"{type(exc).__name__}: {exc}"}
 
     # -- exporting -------------------------------------------------------------
-    def save_file(self, suggested_name: str, content: str) -> dict:
-        ext = os.path.splitext(suggested_name)[1].lower()
-        types = (("CSV file (*.csv)",) if ext == ".csv" else ("JSON file (*.json)",)) + ("All files (*.*)",)
+    def export_pdf(self, reports: list[dict], suggested_name: str = "PPTcheck report.pdf") -> dict:
+        """Ask where to save, write the PDF summary report, then open it."""
+        if not reports:
+            return {"error": "Nothing to export"}
         target = self._window.create_file_dialog(SAVE_DIALOG, save_filename=suggested_name,
-                                                 file_types=types)
+                                                 file_types=("PDF document (*.pdf)",))
         if isinstance(target, (list, tuple)):
             target = target[0] if target else None
         if not target:
             return {"saved": None}
-        if ext and not target.lower().endswith(ext):
-            target += ext
+        if not target.lower().endswith(".pdf"):
+            target += ".pdf"
         try:
-            # utf-8 (with the BOM the CSVs already start with) opens correctly in Excel.
-            with open(target, "w", encoding="utf-8", newline="") as fh:
-                fh.write(content)
+            build_pdf(reports, target)
         except OSError as exc:
             return {"error": exc.strerror or str(exc)}
+        except Exception as exc:
+            return {"error": f"{type(exc).__name__}: {exc}"}
+        _open_with_default_app(target)
         return {"saved": target}
 
     # -- links -------------------------------------------------------------------
@@ -124,9 +127,29 @@ class Api:
         return False
 
     # -- automated self-test (used by the build) ---------------------------------
+    def selftest_export_pdf(self, reports: list[dict]) -> bool:
+        """Self-test only: write the PDF next to the self-test results (no dialog)."""
+        if not self._selftest_out:
+            return False
+        build_pdf(reports, os.path.splitext(self._selftest_out)[0] + ".pdf")
+        return True
+
     def selftest_done(self, result: dict) -> None:
         self._selftest_result = result
         self._selftest_event.set()
+
+
+def _open_with_default_app(path: str) -> None:
+    """Open a saved file in the computer's default app (e.g. the PDF viewer)."""
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------------- #

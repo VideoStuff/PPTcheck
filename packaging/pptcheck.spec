@@ -33,9 +33,10 @@ a = Analysis(
     [os.path.join(ROOT, "packaging", "launcher.py")],
     pathex=[ROOT],
     binaries=mediainfo_libs,
-    datas=[(os.path.join(ROOT, "pptcheck", "static"), os.path.join("pptcheck", "static"))],
+    datas=[(os.path.join(ROOT, "pptcheck", "static"), os.path.join("pptcheck", "static")),
+           (os.path.join(ROOT, "pptcheck", "assets"), os.path.join("pptcheck", "assets"))],
     hiddenimports=hidden,
-    excludes=["tkinter", "pptx", "PIL", "numpy", "pytest", "IPython", "PyQt5", "PyQt6", "PySide2", "PySide6",
+    excludes=["tkinter", "pptx", "numpy", "pytest", "IPython", "PyQt5", "PyQt6", "PySide2", "PySide6",
               "gi", "cefpython3", "fastapi", "uvicorn"],
     noarchive=False,
 )
@@ -60,7 +61,7 @@ if IS_MAC:
         info_plist={
             "CFBundleName": "PPTcheck",
             "CFBundleDisplayName": "PPTcheck",
-            "CFBundleShortVersionString": os.environ.get("PPTCHECK_VERSION", "1.3.0").lstrip("v"),
+            "CFBundleShortVersionString": os.environ.get("PPTCHECK_VERSION", "1.4.0").lstrip("v"),
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,   # follow light/dark mode
         },

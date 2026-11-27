@@ -42,14 +42,7 @@
     <div class="results-head">
       <h2>Batch summary <span id="countLabel" class="muted"></span></h2>
       <div class="exports">
-        <span class="muted small-text">Export (visible rows):</span>
-        <button class="btn small" data-export="summary">Summary CSV</button>
-        <button class="btn small" data-export="videos">Videos CSV</button>
-        <button class="btn small" data-export="transitions">Transitions CSV</button>
-        <button class="btn small" data-export="addins">Add-ins CSV</button>
-        <button class="btn small" data-export="fonts">Fonts CSV</button>
-        <button class="btn small" data-export="slides">Slides CSV</button>
-        <button class="btn small" data-export="json">Full JSON</button>
+        <button class="btn small primary" id="exportPdf" title="PDF summary of the presentations shown in the table (filters apply)">Export PDF report</button>
         <button class="btn small danger" id="clearBtn">Clear</button>
       </div>
     </div>
@@ -87,8 +80,7 @@
     <div class="detail-head">
       <h2 id="detailTitle"></h2>
       <div class="row">
-        <button class="btn small" id="detailJson">Export JSON</button>
-        <button class="btn small" id="detailCsv">Export CSV</button>
+        <button class="btn small primary" id="detailPdf">Export PDF</button>
         <button class="btn small" data-close>Close ✕</button>
       </div>
     </div>

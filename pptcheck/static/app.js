@@ -340,80 +340,29 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
 
   // ------------------------------------------------------------------ export
-  function csvCell(v) {
-    if (v === null || v === undefined) return "";
-    let s = Array.isArray(v) ? v.join("; ") : String(v);
-    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;          // stop spreadsheet formula injection
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  }
-  const toCsv = (headers, rows) => "﻿" + [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
-  // Exports are written by the app after the usual "Save as" window.
-  async function download(name, content) {
-    await bridgeReady;
-    const res = await api.save_file(name, content);
-    if (res && res.saved) toast(`Saved: ${res.saved}`, "ok");
-    else if (res && res.error) toast(`Could not save: ${res.error}`, "bad");
-  }
-  const stamp = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  // The app asks where to save (normal "Save as" window), writes the PDF
+  // summary report on this computer, then opens it.
   const clean = (r) => { const { _key, ...rest } = r; return rest; };
+  const safeName = (n) => baseName(n).replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, "_").trim() || "presentation";
+  const today = () => new Date().toISOString().slice(0, 10);
 
-  const builders = {
-    summary: (rows) => toCsv(
-      ["File name", "File size (MB)", "Slides", "Hidden slides", "Videos", "Embedded videos", "Linked videos", "Total video size (MB)",
-       "Total video length", "Images", "Audio clips", "Text density", "Avg words/slide", "Slides with notes", "Has transitions",
-       "Transition slides", "Transition types", "Auto-advance", "Has animations", "Animated slides", "Detected add-ins",
-       "Font count", "Fonts to install", "Platform-specific fonts", "All fonts", "Error"],
-      rows.map((r) => { const s = r.summary || {}; return [r.file_name, r.file_size_mb, r.slide_count, r.hidden_slide_count, s.video_count,
-        s.embedded_video_count, s.linked_video_count, s.total_video_size_mb, s.total_video_duration, s.image_count, s.audio_count,
-        s.text_density, s.avg_words_per_slide, s.slides_with_notes, s.has_transitions ? "Yes" : "No", s.transition_slide_count,
-        s.transition_types, s.has_auto_advance ? "Yes" : "No", s.has_animations ? "Yes" : "No", s.animated_slide_count, s.addins,
-        s.font_count, s.fonts_to_install, s.font_platform_warnings, s.fonts, r.error]; })),
-    videos: (rows) => toCsv(
-      ["Presentation", "Video file", "Shape name", "Source", "Slide(s)", "Size (MB)", "Duration (HH:MM:SS)", "Duration (s)", "FPS",
-       "Resolution", "Video codec", "Audio codec", "Format", "Container", "Bitrate (kbps)", "Target", "Probe note"],
-      rows.flatMap((r) => (r.videos || []).map((v) => [r.file_name, v.file, v.name, v.source, v.slides, v.size_mb, v.duration,
-        v.duration_seconds, v.fps, v.resolution, v.video_codec, v.audio_codec, v.format, v.container, v.bitrate_kbps, v.target, v.probe_error]))),
-    transitions: (rows) => toCsv(
-      ["Presentation", "Slide", "Transition type", "Option", "Speed", "Duration (ms)", "Auto-advance", "Auto-advance after (s)", "Advance on click", "Sound"],
-      rows.flatMap((r) => (r.transitions || []).map((t) => [r.file_name, t.slide, t.type, t.variant, t.speed, t.duration_ms,
-        t.auto_advance ? "Yes" : "No", t.auto_advance_seconds, t.advance_on_click ? "Yes" : "No", t.sound]))),
-    addins: (rows) => toCsv(
-      ["Presentation", "Add-in", "Category", "Slides", "Presentation-level", "Detected via", "Confidence", "Details"],
-      rows.flatMap((r) => (r.addins || []).map((a) => [r.file_name, a.name, a.category, a.slides, a.presentation_level ? "Yes" : "No",
-        a.sources, a.confidence, a.details]))),
-    fonts: (rows) => toCsv(
-      ["Presentation", "Font", "Status", "Needs installing", "Platform warning", "Embedded", "Installed on this computer",
-       "Slides", "Used in", "Family", "Download / search links", "Notes"],
-      rows.flatMap((r) => (r.fonts || []).map((f) => [r.file_name, f.name, f.status_label, f.needs_install ? "Yes" : "No",
-        f.platform_warning ? "Yes" : "No", f.embedded ? "Yes" : "No",
-        f.installed_here === null || f.installed_here === undefined ? "Unknown" : f.installed_here ? "Yes" : "No",
-        f.slides, f.uses, f.family, (f.links || []).map((l) => l.url), f.note]))),
-    slides: (rows) => toCsv(
-      ["Presentation", "Slide", "Title", "Hidden", "Words", "Images", "Videos", "Audio", "Transition", "Auto-advance (s)",
-       "Animation effects", "Has notes", "Add-ins", "Fonts", "Hyperlinks", "OLE/ActiveX objects"],
-      rows.flatMap((r) => (r.slides || []).map((s) => [r.file_name, s.number, s.title, s.hidden ? "Yes" : "No", s.word_count,
-        s.image_count, s.video_count, s.audio_count, s.transition, s.auto_advance_seconds, s.animation_count,
-        s.has_notes ? "Yes" : "No", s.addins, s.fonts, s.hyperlinks, s.ole_objects]))),
-  };
+  async function exportPdf(reports, suggestedName) {
+    if (!reports.length) { toast("Nothing to export yet — add some presentations first.", "bad"); return; }
+    await bridgeReady;
+    toast("Creating PDF report…");
+    const res = await api.export_pdf(reports.map(clean), suggestedName);
+    if (res && res.saved) toast(`Saved and opened: ${res.saved}`, "ok");
+    else if (res && res.error) toast(`Could not create the PDF: ${res.error}`, "bad");
+    else $("#toast").classList.add("hidden");   // Save window was cancelled
+  }
 
-  document.querySelectorAll("[data-export]").forEach((btn) => btn.addEventListener("click", () => {
+  $("#exportPdf").onclick = () => {
     const rows = visibleRows();
-    if (!rows.length) { toast("Nothing to export yet.", "bad"); return; }
-    const kind = btn.dataset.export;
-    if (kind === "json") download(`pptcheck_${stamp()}.json`, JSON.stringify(rows.map(clean), null, 2));
-    else download(`pptcheck_${kind}_${stamp()}.csv`, builders[kind](rows));
-  }));
-
-  const safeName = (n) => baseName(n).replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "_");
-  $("#detailJson").onclick = () => currentDetail && download(`${safeName(currentDetail.file_name)}_audit.json`,
-    JSON.stringify(clean(currentDetail), null, 2));
-  $("#detailCsv").onclick = () => {
-    if (!currentDetail) return;
-    const r = [currentDetail];
-    // One CSV containing every section, separated by blank lines.
-    const parts = ["summary", "videos", "transitions", "addins", "fonts", "slides"].map((k) => `${k.toUpperCase()}\r\n` + builders[k](r).slice(1));
-    download(`${safeName(currentDetail.file_name)}_audit.csv`, "﻿" + parts.join("\r\n\r\n"));
+    const name = rows.length === 1 ? `${safeName(rows[0].file_name)} - PPTcheck report.pdf` : `PPTcheck report ${today()}.pdf`;
+    exportPdf(rows, name);
   };
+  $("#detailPdf").onclick = () => currentDetail &&
+    exportPdf([currentDetail], `${safeName(currentDetail.file_name)} - PPTcheck report.pdf`);
 
   document.addEventListener("click", async (e) => {
     const a = e.target.closest("a.ext");
@@ -443,7 +392,7 @@
         table: text("#summaryTable"),
         detail: text("#detailBody"),
         engine: text("#engineStatus"),
-        csv: builders.summary(visibleRows()).slice(0, 2000),
+        pdf_written: await api.selftest_export_pdf(visibleRows().map(clean)),
       });
     },
   };

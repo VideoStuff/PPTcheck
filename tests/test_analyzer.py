@@ -103,3 +103,16 @@ def test_page_is_self_contained():
     # The page must not reference any outside resource (only links the user clicks).
     assert not re.search(r'(src|href)="https?://', html)
     assert "fetch(" not in html
+
+
+def test_pdf_report(report, tmp_path):
+    from pptcheck.report_pdf import build_pdf, items_to_check
+    items = " ".join(items_to_check(report))
+    assert "Gotham Rounded" in items and "Slido" in items and "automatically" in items
+    assert "Brand Sans" not in items  # embedded fonts don't need installing
+    single = build_pdf([report], str(tmp_path / "one.pdf"))
+    data = open(single, "rb").read()
+    assert data.startswith(b"%PDF-") and len(data) > 5000
+    broken = {"file_name": "broken.pptx", "error": "Not a valid .pptx", "slide_count": 0}
+    multi = build_pdf([report, broken], str(tmp_path / "many.pdf"))
+    assert open(multi, "rb").read(5) == b"%PDF-"

@@ -14,8 +14,8 @@ folders) and reports:
   installing come with a download link (free Google Fonts) or search links (other fonts).
   It also shows whether each font is embedded in the file or installed on your computer.
 
-It then shows a sortable, filterable dashboard that you can export to **CSV** (opens in Excel)
-or **JSON**.
+It then shows a sortable, filterable dashboard, and can save a **PDF summary report** of the
+findings.
 
 **Privacy:** PPTcheck is a desktop app with its own window. It reads presentations directly
 from your disk and never uploads or sends them anywhere. It has no web server and makes no
@@ -133,10 +133,13 @@ python -m pptcheck
    filter (for example *Add-ins: Detected*).
 4. **Click a row** to open the detailed view, which shows overview stats, the per-video table,
    transitions, animations, add-ins with their slide numbers, and a slide-by-slide breakdown.
-5. **Export:** the buttons above the table export the rows currently shown (Summary, Videos,
-   Transitions, Add-ins, Fonts and Slides as CSV, or everything as JSON). A normal *Save as*
-   window asks where to save. The detail view has its own **Export JSON / Export CSV** buttons
-   for a single presentation.
+5. **PDF report:** **Export PDF report** (above the table) creates a PDF covering the
+   presentations currently shown, so filters apply. The detail view's **Export PDF** button does
+   the same for just that presentation. A normal *Save as* window asks where to save, and the
+   PDF opens when it's ready. Each presentation gets an **Items to check** list (non-standard
+   fonts, add-ins, missing or online videos, video formats that may not play everywhere,
+   auto-advance timings, hidden slides), followed by tables of its videos, transitions, add-ins
+   and fonts, with clickable font download links.
 
 Files starting with `~$` are skipped automatically. PowerPoint creates these temporary lock
 files while a deck is open. `.pptm`, `.ppsx` and `.ppsm` files are accepted too, since they
@@ -146,7 +149,8 @@ them in PowerPoint and *Save As* `.pptx` first.
 ### Command-line mode (no window)
 
 ```bash
-python -m pptcheck --scan "C:\path\to\folder" --out report.json
+python -m pptcheck --scan "C:\path\to\folder" --pdf report.pdf    # PDF report
+python -m pptcheck --scan "C:\path\to\folder" --out report.json  # raw data as JSON
 ```
 
 ---
@@ -217,6 +221,8 @@ PPTcheck/
 │   ├── media.py              video/audio measurement (MediaInfo, ffprobe fallback)
 │   ├── paths.py              finds bundled files when running as a packaged app
 │   ├── addins.py             list of known add-ins and their fingerprints
+│   ├── report_pdf.py         the PDF summary report ("Items to check" + tables)
+│   ├── assets/fonts/         DejaVu Sans font used in the PDF (free license included)
 │   ├── fonts.py              font lists (standard/Office/Google…), download links, installed-font check
 │   └── static/               the dashboard (index.html, app.js, styles.css)
 └── tests/
