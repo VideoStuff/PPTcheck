@@ -198,18 +198,20 @@
       case "has_transitions": return s.has_transitions ? 1 : 0;
       case "has_animations": return s.has_animations ? 1 : 0;
       case "addins_text": return (s.addins || []).join(", ");
+      case "fonts_issue": return (s.fonts_to_install || []).length * 1000 + (s.font_count || 0);
       default: return r[key] ?? "";
     }
   };
 
   function visibleRows() {
     const text = $("#filterText").value.trim().toLowerCase();
-    const fv = $("#filterVideos").value, ft = $("#filterTrans").value, fa = $("#filterAddins").value;
+    const fv = $("#filterVideos").value, ft = $("#filterTrans").value, fa = $("#filterAddins").value, ff = $("#filterFonts").value;
     const yn = (want, has) => !want || (want === "yes") === !!has;
     const rows = [...results.values()].filter((r) => {
       const s = r.summary || {};
-      if (text && !(`${r.file_name} ${(s.addins || []).join(" ")}`.toLowerCase().includes(text))) return false;
-      return yn(fv, s.video_count) && yn(ft, s.has_transitions) && yn(fa, (s.addins || []).length);
+      if (text && !(`${r.file_name} ${(s.addins || []).join(" ")} ${(s.fonts || []).join(" ")}`.toLowerCase().includes(text))) return false;
+      return yn(fv, s.video_count) && yn(ft, s.has_transitions) && yn(fa, (s.addins || []).length)
+        && (!ff || yn(ff, (s.fonts_to_install || []).length));
     });
     rows.sort((a, b) => {
       const x = rowValue(a, sortKey), y = rowValue(b, sortKey);
@@ -226,6 +228,10 @@
       const s = r.summary || {};
       const yes = (v) => `<span class="tag ${v ? "yes" : "no"}">${v ? "Yes" : "No"}</span>`;
       const addins = (s.addins || []).map((a) => `<span class="tag addin">${esc(a)}</span>`).join("") || '<span class="muted">—</span>';
+      const toInstall = s.fonts_to_install || [];
+      const fonts = r.error ? "—" : `${fmt(s.font_count, 0)} font${s.font_count === 1 ? "" : "s"}` +
+        (toInstall.length ? "<br>" + toInstall.map((f) => `<span class="tag err" title="Not standard — must be installed">${esc(f)}</span>`).join("")
+          : ' <span class="tag yes">all standard</span>');
       const status = r.error ? ` <span class="tag err" title="${esc(r.error)}">Error</span>` : "";
       const trans = s.has_transitions ? `${yes(true)} <span class="muted small-text">${esc((s.transition_types || []).join(", "))}</span>` : yes(false);
       return `<tr data-key="${esc(r._key)}">
@@ -237,6 +243,7 @@
         <td>${r.error ? "—" : trans}</td>
         <td>${r.error ? "—" : yes(s.has_animations)}</td>
         <td>${addins}</td>
+        <td>${fonts}</td>
         <td class="num">${fmt(r.file_size_mb)}</td></tr>`;
     }).join("");
     $("#emptyState").classList.toggle("hidden", results.size > 0);
@@ -251,7 +258,7 @@
     if (sortKey === th.dataset.sort) sortDir = -sortDir; else { sortKey = th.dataset.sort; sortDir = 1; }
     renderTable();
   }));
-  ["#filterText", "#filterVideos", "#filterTrans", "#filterAddins"].forEach((s) => $(s).addEventListener("input", renderTable));
+  ["#filterText", "#filterVideos", "#filterTrans", "#filterAddins", "#filterFonts"].forEach((s) => $(s).addEventListener("input", renderTable));
   $("#summaryTable tbody").addEventListener("click", (e) => {
     const tr = e.target.closest("tr[data-key]");
     if (tr) openDetail(results.get(tr.dataset.key));
@@ -267,6 +274,9 @@
     return `<table class="data"><thead><tr>${headers.map((h) => `<th class="${h.num ? "num" : ""}">${esc(h.label)}</th>`).join("")}</tr></thead>
       <tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td class="${headers[i].num ? "num" : ""}">${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   }
+  // Only server-generated https:// links are rendered, opened in a new tab.
+  const link = (l) => (/^https:\/\//.test(l.url)
+    ? `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>` : "");
   const slideList = (arr) => (arr && arr.length ? arr.join(", ") : "—");
 
   function openDetail(r) {
@@ -330,16 +340,39 @@
         esc(a.sources.join(", ")), `<span class="tag conf-${esc(a.confidence)}">${esc(a.confidence)}</span>`,
         `<div class="links">${a.details.map(esc).join("<br>")}</div>`])) + "</div>";
 
+    // Fonts
+    const fontsArr = r.fonts || [];
+    const installCount = fontsArr.filter((f) => f.needs_install).length;
+    const statusTag = (f) => {
+      const cls = f.needs_install ? "err" : f.platform_warning ? "warn" : "yes";
+      return `<span class="tag ${cls}" title="${esc(f.note)}">${esc(f.status_label)}</span>`;
+    };
+    const installedCell = (v) => (v === true ? '<span class="tag yes">Yes</span>' : v === false ? '<span class="tag no">No</span>' : '<span class="muted">unknown</span>');
+    html += `<div class="section"><h3>Fonts (${fontsArr.length})${installCount ? ` — <span class="tag err">${installCount} need installing</span>` : ""}</h3>
+      <p class="muted small-text">"Installed here" means installed on <em>this</em> computer, the one running PPTcheck.
+      Fonts that need installing must be installed on every computer that will present this deck, or embedded
+      (PowerPoint: File › Options › Save › <em>Embed fonts in the file</em>). Hover over a status for details.</p>` + table(
+      [{ label: "Font" }, { label: "Status" }, { label: "Used on" }, { label: "Embedded" }, { label: "Installed here" }, { label: "Download / find" }],
+      fontsArr.map((f) => [
+        `<strong>${esc(f.name)}</strong>${f.family && f.family !== f.name ? `<div class="links">family: ${esc(f.family)}</div>` : ""}`,
+        statusTag(f) + `<div class="links">${esc(f.note)}</div>`,
+        esc(f.slides.length ? "Slides " + f.slides.join(", ") : "—") + `<div class="links">${esc(f.uses.join(", "))}</div>`,
+        f.embedded ? `<span class="tag yes">Yes</span>${f.embedded_styles.length ? `<div class="links">${esc(f.embedded_styles.join(", "))}</div>` : ""}` : '<span class="tag no">No</span>',
+        installedCell(f.installed_here),
+        f.links.map(link).join("<br>") || '<span class="muted">—</span>',
+      ])) + "</div>";
+
     // Slide by slide
     html += `<div class="section"><h3>Slide-by-slide findings</h3>` + table(
       [{ label: "#", num: 1 }, { label: "Title" }, { label: "Hidden" }, { label: "Words", num: 1 }, { label: "Images", num: 1 },
        { label: "Videos", num: 1 }, { label: "Audio", num: 1 }, { label: "Transition" }, { label: "Animations", num: 1 },
-       { label: "Notes" }, { label: "Add-ins" }, { label: "Links / objects" }],
+       { label: "Notes" }, { label: "Add-ins" }, { label: "Fonts" }, { label: "Links / objects" }],
       (r.slides || []).map((sl) => [sl.number, esc(fmt(sl.title)), sl.hidden ? '<span class="tag warn">Hidden</span>' : "",
         sl.word_count, sl.image_count, sl.video_count, sl.audio_count,
         esc(fmt(sl.transition)) + (sl.auto_advance_seconds != null ? ` <span class="muted small-text">(auto ${esc(sl.auto_advance_seconds)}s)</span>` : ""),
         sl.animation_count, sl.has_notes ? `<span title="${esc(sl.notes_preview)}" class="tag yes">Yes</span>` : '<span class="tag no">No</span>',
         sl.addins.map((a) => `<span class="tag addin">${esc(a)}</span>`).join("") || "—",
+        `<div class="links">${(sl.fonts || []).map(esc).join("<br>") || "—"}</div>`,
         `<div class="links">${[...sl.hyperlinks, ...sl.ole_objects].map(esc).join("<br>") || "—"}</div>`])) + "</div>";
 
     $("#detailBody").innerHTML = html;
@@ -371,11 +404,13 @@
     summary: (rows) => toCsv(
       ["File name", "File size (MB)", "Slides", "Hidden slides", "Videos", "Embedded videos", "Linked videos", "Total video size (MB)",
        "Total video length", "Images", "Audio clips", "Text density", "Avg words/slide", "Slides with notes", "Has transitions",
-       "Transition slides", "Transition types", "Auto-advance", "Has animations", "Animated slides", "Detected add-ins", "Error"],
+       "Transition slides", "Transition types", "Auto-advance", "Has animations", "Animated slides", "Detected add-ins",
+       "Font count", "Fonts to install", "Platform-specific fonts", "All fonts", "Error"],
       rows.map((r) => { const s = r.summary || {}; return [r.file_name, r.file_size_mb, r.slide_count, r.hidden_slide_count, s.video_count,
         s.embedded_video_count, s.linked_video_count, s.total_video_size_mb, s.total_video_duration, s.image_count, s.audio_count,
         s.text_density, s.avg_words_per_slide, s.slides_with_notes, s.has_transitions ? "Yes" : "No", s.transition_slide_count,
-        s.transition_types, s.has_auto_advance ? "Yes" : "No", s.has_animations ? "Yes" : "No", s.animated_slide_count, s.addins, r.error]; })),
+        s.transition_types, s.has_auto_advance ? "Yes" : "No", s.has_animations ? "Yes" : "No", s.animated_slide_count, s.addins,
+        s.font_count, s.fonts_to_install, s.font_platform_warnings, s.fonts, r.error]; })),
     videos: (rows) => toCsv(
       ["Presentation", "Video file", "Shape name", "Source", "Slide(s)", "Size (MB)", "Duration (HH:MM:SS)", "Duration (s)", "FPS",
        "Resolution", "Video codec", "Audio codec", "Format", "Container", "Bitrate (kbps)", "Target", "Probe note"],
@@ -389,12 +424,19 @@
       ["Presentation", "Add-in", "Category", "Slides", "Presentation-level", "Detected via", "Confidence", "Details"],
       rows.flatMap((r) => (r.addins || []).map((a) => [r.file_name, a.name, a.category, a.slides, a.presentation_level ? "Yes" : "No",
         a.sources, a.confidence, a.details]))),
+    fonts: (rows) => toCsv(
+      ["Presentation", "Font", "Status", "Needs installing", "Platform warning", "Embedded", "Installed on this computer",
+       "Slides", "Used in", "Family", "Download / search links", "Notes"],
+      rows.flatMap((r) => (r.fonts || []).map((f) => [r.file_name, f.name, f.status_label, f.needs_install ? "Yes" : "No",
+        f.platform_warning ? "Yes" : "No", f.embedded ? "Yes" : "No",
+        f.installed_here === null || f.installed_here === undefined ? "Unknown" : f.installed_here ? "Yes" : "No",
+        f.slides, f.uses, f.family, (f.links || []).map((l) => l.url), f.note]))),
     slides: (rows) => toCsv(
       ["Presentation", "Slide", "Title", "Hidden", "Words", "Images", "Videos", "Audio", "Transition", "Auto-advance (s)",
-       "Animation effects", "Has notes", "Add-ins", "Hyperlinks", "OLE/ActiveX objects"],
+       "Animation effects", "Has notes", "Add-ins", "Fonts", "Hyperlinks", "OLE/ActiveX objects"],
       rows.flatMap((r) => (r.slides || []).map((s) => [r.file_name, s.number, s.title, s.hidden ? "Yes" : "No", s.word_count,
         s.image_count, s.video_count, s.audio_count, s.transition, s.auto_advance_seconds, s.animation_count,
-        s.has_notes ? "Yes" : "No", s.addins, s.hyperlinks, s.ole_objects]))),
+        s.has_notes ? "Yes" : "No", s.addins, s.fonts, s.hyperlinks, s.ole_objects]))),
   };
 
   document.querySelectorAll("[data-export]").forEach((btn) => btn.addEventListener("click", () => {
@@ -412,7 +454,7 @@
     if (!currentDetail) return;
     const r = [currentDetail];
     // One CSV containing every section, separated by blank lines.
-    const parts = ["summary", "videos", "transitions", "addins", "slides"].map((k) => `${k.toUpperCase()}\r\n` + builders[k](r).slice(1));
+    const parts = ["summary", "videos", "transitions", "addins", "fonts", "slides"].map((k) => `${k.toUpperCase()}\r\n` + builders[k](r).slice(1));
     download(`${safeName(currentDetail.file_name)}_audit.csv`, "﻿" + parts.join("\r\n\r\n"), "text/csv;charset=utf-8");
   };
 

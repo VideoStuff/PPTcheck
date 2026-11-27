@@ -12,13 +12,20 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .analyzer import analyze_pptx
+from .fonts import preload_installed_fonts
 from .media import FFPROBE, ffprobe_available
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 PPT_EXTENSIONS = (".pptx", ".pptm", ".ppsx", ".ppsm")
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 
-app = FastAPI(title="PPTcheck", version="1.0.0")
+app = FastAPI(title="PPTcheck", version="1.1.0")
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    # Reading the installed-font list takes a few seconds; start it early.
+    preload_installed_fonts()
 
 
 @app.middleware("http")

@@ -28,6 +28,7 @@ from urllib.parse import unquote, urlparse
 from lxml import etree
 
 from .addins import match_addins
+from .fonts import classify as classify_font, installed_font_names, is_installed
 from .media import format_duration, probe_file, probe_zip_member
 
 NS = {
@@ -365,6 +366,101 @@ def _webext_detail(info: dict) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Fonts
+# --------------------------------------------------------------------------- #
+
+FONT_ELEMENTS = {"latin", "ea", "cs", "sym", "buFont"}
+FONT_PART_KINDS = {"chart": "Chart", "diagramData": "SmartArt", "diagramDrawing": "SmartArt"}
+
+
+def _rel_target(pkg: Package, part: str, kind: str) -> str | None:
+    for rel in pkg.rels(part).values():
+        if rel["kind"] == kind and not rel["external"] and pkg.has(rel["target"]):
+            return rel["target"]
+    return None
+
+
+def _theme_fonts(pkg: Package, theme_part: str | None) -> dict[str, str]:
+    """Map theme placeholders (mj-lt, mn-lt, mj-ea...) to real font names."""
+    result: dict[str, str] = {}
+    root = pkg.xml(theme_part) if theme_part else None
+    if root is None:
+        return result
+    scheme = root.find(f".//{{{NS['a']}}}fontScheme")
+    if scheme is None:
+        return result
+    for kind, prefix in (("majorFont", "mj"), ("minorFont", "mn")):
+        el = scheme.find(f"{{{NS['a']}}}{kind}")
+        if el is None:
+            continue
+        for tag, suffix in (("latin", "lt"), ("ea", "ea"), ("cs", "cs")):
+            t = el.find(f"{{{NS['a']}}}{tag}")
+            if t is not None and (t.get("typeface") or "").strip():
+                result[f"{prefix}-{suffix}"] = t.get("typeface").strip()
+    return result
+
+
+class FontCollector:
+    def __init__(self):
+        self.fonts: dict[str, dict] = {}
+
+    def add(self, name: str | None, slide: int | None, use: str):
+        name = (name or "").strip().lstrip("@")
+        if not name or name.startswith("+"):
+            return
+        key = name.lower()
+        item = self.fonts.setdefault(key, {"name": name, "slides": set(), "uses": set(),
+                                           "embedded": False, "embedded_styles": []})
+        if slide is not None:
+            item["slides"].add(slide)
+        item["uses"].add(use)
+
+    def scan(self, root, theme: dict[str, str], slide: int | None, use: str) -> set[str]:
+        found = set()
+        if root is None:
+            return found
+        for el in root.iter():
+            if not isinstance(el.tag, str) or _local(el) not in FONT_ELEMENTS:
+                continue
+            face = (el.get("typeface") or "").strip()
+            if not face:
+                continue
+            if face.startswith("+"):
+                face = theme.get(face[1:], "")
+            if face:
+                self.add(face, slide, use)
+                found.add(face.lstrip("@"))
+        return found
+
+    def result(self, installed: set[str] | None) -> list[dict]:
+        out = []
+        for item in self.fonts.values():
+            info = classify_font(item["name"])
+            embedded = item["embedded"]
+            needs_install = info["status"] in ("google", "nonstandard") and not embedded
+            warning = info["status"] in ("windows", "mac", "cloud") and not embedded
+            slides = sorted(item["slides"])
+            out.append({
+                "name": item["name"],
+                "status": info["status"],
+                "status_label": info["label"],
+                "note": ("Embedded in this file, so it travels with the presentation "
+                         "(if the font's license allows embedding). " if embedded else "") + info["note"],
+                "family": info["family"],
+                "links": info["links"],
+                "embedded": embedded,
+                "embedded_styles": item["embedded_styles"],
+                "installed_here": is_installed(item["name"], installed),
+                "needs_install": needs_install,
+                "platform_warning": warning,
+                "slides": slides,
+                "uses": sorted(item["uses"]),
+            })
+        out.sort(key=lambda f: (not f["needs_install"], not f["platform_warning"], f["name"].lower()))
+        return out
+
+
+# --------------------------------------------------------------------------- #
 # Add-in collector
 # --------------------------------------------------------------------------- #
 
@@ -441,7 +537,7 @@ def _empty_report(file_name: str, size: int, error: str) -> dict:
     return {"file_name": file_name, "file_size_bytes": size, "file_size_mb": _mb(size),
             "error": error, "slide_count": 0, "hidden_slide_count": 0,
             "summary": {}, "videos": [], "audio": [], "transitions": [],
-            "animations": [], "addins": [], "slides": [], "warnings": [error]}
+            "animations": [], "addins": [], "fonts": [], "slides": [], "warnings": [error]}
 
 
 def analyze_pptx(path: str, display_name: str | None = None,
@@ -476,6 +572,9 @@ def _analyze_package(pkg: Package, file_name: str, size: int, source_dir: str | 
     animations: list[dict] = []
     media_groups: dict[tuple, dict] = {}
     referenced_webext: set[str] = set()
+    fonts = FontCollector()
+    theme_cache: dict[str | None, dict[str, str]] = {}
+    scanned_layouts: set[str] = set()
 
     for number, part in enumerate(slide_parts, start=1):
         root = pkg.xml(part)
@@ -485,6 +584,26 @@ def _analyze_package(pkg: Package, file_name: str, size: int, source_dir: str | 
         rels = pkg.rels(part)
         hidden = root.get("show") in ("0", "false")
         words = _word_count(root)
+        layout_part = _rel_target(pkg, part, "slideLayout")
+        master_part = _rel_target(pkg, layout_part, "slideMaster") if layout_part else None
+        if master_part not in theme_cache:
+            theme_part = _rel_target(pkg, master_part, "theme") if master_part else None
+            theme_cache[master_part] = _theme_fonts(pkg, theme_part or "ppt/theme/theme1.xml")
+        theme = theme_cache[master_part]
+        for p_ in (layout_part, master_part):
+            if p_ and p_ not in scanned_layouts:
+                scanned_layouts.add(p_)
+                fonts.scan(pkg.xml(p_), theme, None, "Slide master / layout")
+        slide_fonts = fonts.scan(root, theme, number, "Slide text")
+        for rel in rels.values():
+            use = FONT_PART_KINDS.get(rel["kind"])
+            if use and not rel["external"]:
+                slide_fonts |= fonts.scan(pkg.xml(rel["target"]), theme, number, use)
+        if words:
+            for key, use in (("mj-lt", "Theme heading font"), ("mn-lt", "Theme body font")):
+                if theme.get(key):
+                    fonts.add(theme[key], number, use)
+                    slide_fonts.add(theme[key])
         media_refs, images = _media_from_slide(pkg, root, rels)
         trans = _transition(root)
         anim = _animations(root)
@@ -582,7 +701,22 @@ def _analyze_package(pkg: Package, file_name: str, size: int, source_dir: str | 
             "hyperlinks": hyperlinks,
             "ole_objects": ole_objects,
             "addins": sorted(slide_addins),
+            "fonts": sorted(slide_fonts, key=str.lower),
         })
+
+    # --- embedded fonts (File > Options > Save > Embed fonts) ---------------
+    pres_root = pkg.xml("ppt/presentation.xml")
+    if pres_root is not None:
+        for emb in pres_root.iter(f"{{{NS['p']}}}embeddedFont"):
+            font_el = emb.find(f"{{{NS['p']}}}font")
+            face = font_el.get("typeface") if font_el is not None else None
+            if not face:
+                continue
+            fonts.add(face, None, "Embedded in file")
+            item = fonts.fonts.get(face.strip().lstrip("@").lower())
+            if item:
+                item["embedded"] = True
+                item["embedded_styles"] = [_local(c) for c in emb if isinstance(c.tag, str) and _local(c) != "font"]
 
     # --- presentation-level add-in scan ------------------------------------
     taskpanes = "ppt/webextensions/taskpanes.xml"
@@ -627,6 +761,7 @@ def _analyze_package(pkg: Package, file_name: str, size: int, source_dir: str | 
     audio.sort(key=lambda v: (v["slides"][0] if v["slides"] else 0, v["file"]))
 
     # --- summary -----------------------------------------------------------
+    font_list = fonts.result(installed_font_names())
     slide_count = len(slides)
     total_words = sum(s["word_count"] for s in slides)
     avg_words = round(total_words / slide_count, 1) if slide_count else 0
@@ -666,6 +801,11 @@ def _analyze_package(pkg: Package, file_name: str, size: int, source_dir: str | 
         "addins": [a["name"] for a in addin_list if a["confidence"] != "low"],
         "addin_mentions": [a["name"] for a in addin_list if a["confidence"] == "low"],
         "external_hyperlink_count": sum(len(s["hyperlinks"]) for s in slides),
+        "font_count": len(font_list),
+        "fonts": [f["name"] for f in font_list],
+        "fonts_to_install": [f["name"] for f in font_list if f["needs_install"]],
+        "font_platform_warnings": [f["name"] for f in font_list if f["platform_warning"]],
+        "embedded_fonts": [f["name"] for f in font_list if f["embedded"]],
     }
     hidden_count = sum(1 for s in slides if s["hidden"])
     summary["description"] = _describe(slide_count, hidden_count, summary)
@@ -682,6 +822,7 @@ def _analyze_package(pkg: Package, file_name: str, size: int, source_dir: str | 
         "transitions": transitions,
         "animations": animations,
         "addins": addin_list,
+        "fonts": font_list,
         "slides": slides,
         "warnings": warnings,
         "error": None,
@@ -758,4 +899,10 @@ def _describe(slide_count: int, hidden: int, s: dict) -> str:
         parts.append(f"auto-advance timings on {_plural(s['auto_advance_slide_count'], 'slide')}")
     parts.append(f"animations on {_plural(s['animated_slide_count'], 'slide')}" if s["has_animations"] else "no animations")
     parts.append("add-ins: " + ", ".join(s["addins"]) if s["addins"] else "no add-ins detected")
+    font_text = _plural(s["font_count"], "font")
+    if s["fonts_to_install"]:
+        font_text += f" ({len(s['fonts_to_install'])} not standard: {', '.join(s['fonts_to_install'])})"
+    else:
+        font_text += " (all standard or embedded)"
+    parts.append(font_text)
     return "; ".join(parts) + "."

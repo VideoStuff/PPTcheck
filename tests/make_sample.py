@@ -74,6 +74,11 @@ def build(out_dir: str) -> str:
 
     s3 = prs.slides.add_slide(layout)
     s3.shapes.title.text = "Interactive poll"
+    for run_text, font in (("Google font", "Montserrat SemiBold"), ("Commercial font", "Gotham Rounded"),
+                           ("Windows font", "Segoe UI")):
+        r = s3.placeholders[1].text_frame.add_paragraph().add_run()
+        r.text = run_text
+        r.font.name = font
 
     s4 = prs.slides.add_slide(layout)
     s4.shapes.title.text = "Backup (hidden)"
@@ -100,6 +105,11 @@ def build(out_dir: str) -> str:
                 data = data.replace(b"</Relationships>", b'<Relationship Id="rIdWE1" Type="http://schemas.microsoft.com/'
                                     b'office/2011/relationships/webextension" Target="../webextensions/webextension1.xml"/>'
                                     b"</Relationships>")
+            elif name == "ppt/presentation.xml":
+                # Declare an embedded font (as PowerPoint's "Embed fonts in the file" does).
+                data = data.replace(b"<p:defaultTextStyle>", b'<p:embeddedFontLst><p:embeddedFont>'
+                                    b'<p:font typeface="Brand Sans"/><p:regular r:id="rIdF1"/></p:embeddedFont>'
+                                    b"</p:embeddedFontLst><p:defaultTextStyle>", 1)
             elif name == "ppt/slides/slide4.xml":
                 data = data.replace(b"<p:sld ", b'<p:sld show="0" ', 1)
             zout.writestr(item, data)

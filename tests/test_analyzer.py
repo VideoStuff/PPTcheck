@@ -57,3 +57,23 @@ def test_bad_file(tmp_path):
     p.write_bytes(b"not a zip")
     r = analyze_pptx(str(p))
     assert r["error"]
+
+
+def test_fonts(report):
+    f = {x["name"]: x for x in report["fonts"]}
+    assert f["Montserrat SemiBold"]["status"] == "google" and f["Montserrat SemiBold"]["needs_install"]
+    assert f["Montserrat SemiBold"]["links"][0]["url"] == "https://fonts.google.com/specimen/Montserrat"
+    assert f["Gotham Rounded"]["status"] == "nonstandard" and f["Gotham Rounded"]["slides"] == [3]
+    assert f["Segoe UI"]["status"] == "windows" and f["Segoe UI"]["platform_warning"]
+    assert f["Calibri"]["status"] == "office" and "Theme body font" in f["Calibri"]["uses"]
+    assert f["Brand Sans"]["embedded"] and not f["Brand Sans"]["needs_install"]
+    assert sorted(report["summary"]["fonts_to_install"]) == ["Gotham Rounded", "Montserrat SemiBold"]
+
+
+def test_font_classification():
+    from pptcheck.fonts import classify
+    assert classify("Source Sans Pro")["family"] == "Source Sans 3"
+    assert classify("Open Sans Light")["status"] == "google"
+    assert classify("Aptos Display")["status"] == "cloud"
+    assert classify("Arial")["status"] == "standard"
+    assert classify("Proxima Nova")["status"] == "nonstandard"

@@ -9,7 +9,7 @@
 <body>
 <header class="topbar">
   <div class="brand">PPT<span>check</span></div>
-  <div class="tagline">Technical audit for PowerPoint files — videos, transitions, animations &amp; add-ins</div>
+  <div class="tagline">Technical audit for PowerPoint files — videos, transitions, animations, add-ins &amp; fonts</div>
   <div id="ffprobeStatus" class="pill">Checking FFmpeg…</div>
 </header>
 
@@ -52,16 +52,18 @@
         <button class="btn small" data-export="videos">Videos CSV</button>
         <button class="btn small" data-export="transitions">Transitions CSV</button>
         <button class="btn small" data-export="addins">Add-ins CSV</button>
+        <button class="btn small" data-export="fonts">Fonts CSV</button>
         <button class="btn small" data-export="slides">Slides CSV</button>
         <button class="btn small" data-export="json">Full JSON</button>
         <button class="btn small danger" id="clearBtn">Clear</button>
       </div>
     </div>
     <div class="filters">
-      <input type="search" id="filterText" placeholder="Filter by file name or add-in…">
+      <input type="search" id="filterText" placeholder="Filter by file name, add-in or font…">
       <label>Videos <select id="filterVideos"><option value="">Any</option><option value="yes">Has videos</option><option value="no">No videos</option></select></label>
       <label>Transitions <select id="filterTrans"><option value="">Any</option><option value="yes">Yes</option><option value="no">No</option></select></label>
       <label>Add-ins <select id="filterAddins"><option value="">Any</option><option value="yes">Detected</option><option value="no">None</option></select></label>
+      <label>Fonts <select id="filterFonts"><option value="">Any</option><option value="yes">Need installing</option><option value="no">All standard</option></select></label>
     </div>
     <div class="table-wrap">
       <table id="summaryTable" class="data">
@@ -74,6 +76,7 @@
           <th data-sort="has_transitions">Transitions?</th>
           <th data-sort="has_animations">Animations?</th>
           <th data-sort="addins_text">Detected add-ins</th>
+          <th data-sort="fonts_issue">Fonts</th>
           <th data-sort="file_size_mb" class="num">File size (MB)</th>
         </tr></thead>
         <tbody></tbody>

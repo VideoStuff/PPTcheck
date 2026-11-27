@@ -10,6 +10,9 @@ folders) and reports:
   auto-advance timings, and animation counts per slide
 - **Add-ins:** Slido, Mentimeter, Poll Everywhere, Kahoot!, Microsoft Forms and other
   Office Web Add-ins, with the slide numbers where they appear
+- **Fonts:** every font used, where it's used, and whether it's standard. Fonts that need
+  installing come with a download link (free Google Fonts) or search links (other fonts).
+  It also shows whether each font is embedded in the file or installed on your computer.
 
 It then shows a sortable, filterable dashboard that you can export to **CSV** (opens in Excel)
 or **JSON**.
@@ -133,7 +136,7 @@ from opening the browser automatically.
 4. **Click a row** to open the detailed view, which shows overview stats, the per-video table,
    transitions, animations, add-ins with their slide numbers, and a slide-by-slide breakdown.
 5. **Export:** the buttons above the table export the rows currently shown (Summary, Videos,
-   Transitions, Add-ins and Slides as CSV, or everything as JSON). The detail view has its own
+   Transitions, Add-ins, Fonts and Slides as CSV, or everything as JSON). The detail view has its own
    **Export JSON / Export CSV** buttons for a single presentation.
 
 Files starting with `~$` are skipped automatically. PowerPoint creates these temporary lock
@@ -158,6 +161,7 @@ python -m pptcheck --scan "C:\path\to\folder" --out report.json
 | Video metrics | ffprobe on each extracted media file (duration, avg frame rate, width×height, codecs) |
 | Transitions | `<p:transition>`, including Morph (`p159:morph`) and newer effects in `mc:AlternateContent`; `advTm` = auto-advance |
 | Animations | `<p:timing>` → `<p:cTn presetClass=…>` (entrance/emphasis/exit/motion path). Video "play" triggers are counted separately. |
+| Fonts | `<a:latin>`, `<a:ea>`, `<a:cs>`, `<a:sym>`, `<a:buFont>` in slides, charts, SmartArt, masters and layouts; theme `<a:fontScheme>`; `<p:embeddedFontLst>` |
 | Add-ins | `ppt/webextensions/*` (Office Web Add-ins placed on slides or as task panes), slide tag parts, OLE/ActiveX objects, hyperlinks, custom XML parts, document properties |
 
 **Confidence levels for add-ins:**
@@ -171,6 +175,27 @@ Low-confidence matches appear in the detail view but are left out of the summary
 **Unrecognised Office Web Add-ins** are still reported, labelled with their Office Store ID
 (e.g. `Office Web Add-in (wa104381909)`). To teach PPTcheck a new add-in name, add an entry to
 `KNOWN_ADDINS` in `pptcheck/addins.py`.
+
+### Fonts
+
+PPTcheck reads fonts from slide text, bullets, charts, SmartArt, slide masters/layouts, the
+theme (the "Headings" and "Body" fonts), and the list of fonts embedded in the file. Each font
+gets one of these statuses:
+
+| Status | Meaning | Action |
+|---|---|---|
+| Standard (Windows & Mac) | Arial, Times New Roman, Verdana… | None |
+| Included with Microsoft Office | Calibri, Cambria, Century Gothic… | None if Office is installed |
+| Microsoft 365 cloud font | Aptos, Grandview, Arial Nova… | Office downloads these automatically when online; older or offline Office versions substitute them |
+| Windows only / Mac only | Segoe UI / Helvetica Neue, Avenir… | Check the deck on the other platform |
+| Free — Google Fonts | Montserrat, Open Sans, Roboto… | Click **Download from Google Fonts** and install the font |
+| Not standard — must be installed | Gotham, Proxima Nova, company fonts… | Use the search links to find it. It may be a paid font, so check the license. |
+
+A font that is **embedded in the file** doesn't need installing, as long as its license allows
+embedding. **"Installed here"** shows whether the font is installed on the computer running
+PPTcheck, which helps you check a presenting laptop. Style words are ignored when matching, so
+"Montserrat SemiBold" is matched as "Montserrat". To change how a font is classified, add its
+name to one of the lists at the top of `pptcheck/fonts.py`.
 
 **Online videos** (YouTube, Stream, etc.) are listed as "Linked (online)". Their duration and
 FPS can't be measured because PPTcheck doesn't download anything from the internet.
@@ -189,6 +214,7 @@ PPTcheck/
 │   ├── analyzer.py           opens the .pptx ZIP and reads the XML
 │   ├── media.py              ffprobe video/audio measurement
 │   ├── addins.py             list of known add-ins and their fingerprints
+│   ├── fonts.py              font lists (standard/Office/Google…), download links, installed-font check
 │   └── static/               the dashboard (index.html, app.js, styles.css)
 └── tests/
     ├── make_sample.py        builds a test deck with a video, Morph, Fade, Slido, …
